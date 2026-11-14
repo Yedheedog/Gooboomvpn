@@ -27,8 +27,12 @@ The script installs separate dependency trees for:
 | Android ABI | vcpkg triplet |
 | --- | --- |
 | arm64-v8a | arm64-android |
-| armeabi-v7a | arm-android |
 | x86_64 | x64-android |
+
+32-bit `armeabi-v7a` is currently excluded. The pinned vcpkg community
+triplet for that ABI fails compiler detection with the selected NDK, and
+modern Android devices are predominantly 64-bit. It can be reconsidered if
+32-bit device support becomes a requirement.
 
 The CMake target consumes the matching tree based on `ANDROID_ABI`.
 
