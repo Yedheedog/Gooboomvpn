@@ -34,6 +34,10 @@ jobs:
             "build-tools;35.0.0" \
             "ndk;27.2.12479018" \
             "cmake;3.22.1"
+      - name: Install host pkg-config
+        run: sudo apt-get update && sudo apt-get install -y pkg-config
+      - name: Install pinned Android native dependencies
+        run: bash scripts/install-android-native-deps.sh
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
