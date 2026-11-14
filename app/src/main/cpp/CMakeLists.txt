@@ -36,6 +36,14 @@ if(ANDROID)
             "Run scripts/install-android-native-deps.sh.")
     endif()
 
+    # Android's toolchain sets CMAKE_FIND_ROOT_PATH_MODE_* to ONLY, which
+    # re-roots host-side vcpkg prefixes under the NDK sysroot. Pin the
+    # dependency locations explicitly so Findasio/Findlz4 cannot miss them.
+    set(ASIO_INCLUDE_DIR "${VPNGATE_DEPS_ROOT}/include" CACHE PATH "vcpkg Asio headers" FORCE)
+    set(LZ4_INCLUDE_DIR "${VPNGATE_DEPS_ROOT}/include" CACHE PATH "vcpkg LZ4 headers" FORCE)
+    set(LZ4_LIBRARY "${VPNGATE_DEPS_ROOT}/lib/liblz4.a" CACHE FILEPATH "vcpkg LZ4 library" FORCE)
+    set(fmt_DIR "${VPNGATE_DEPS_ROOT}/share/fmt" CACHE PATH "vcpkg fmt package config" FORCE)
+
     list(PREPEND CMAKE_PREFIX_PATH "${VPNGATE_DEPS_ROOT}")
     set(ENV{PKG_CONFIG_LIBDIR} "${VPNGATE_DEPS_ROOT}/lib/pkgconfig")
     set(ENV{PKG_CONFIG_PATH} "${VPNGATE_DEPS_ROOT}/lib/pkgconfig")
