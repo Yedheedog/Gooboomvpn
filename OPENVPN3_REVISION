@@ -1,0 +1,9 @@
+OpenVPN 3 upstream source pin
+
+Repository: https://github.com/OpenVPN/openvpn3
+Revision: 0c1ce172fe918b05463d71e682a0c2f2d8fe7899
+Commit date: 2026-11-04
+Commit subject: clang-tidy: Disable readability-braces-around-statements
+
+The source is fetched by scripts/fetch-openvpn3.sh. The revision is pinned for reproducible
+integration; this file is metadata, not a claim that the native core is already linked.
