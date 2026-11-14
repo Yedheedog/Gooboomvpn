@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  debug-build:
+  android-build:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -28,5 +28,17 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Assemble debug APK
-        run: gradle --no-daemon assembleDebug
+      - name: Build debug and release APKs
+        run: gradle --no-daemon assembleDebug assembleRelease
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-gate-connect-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+      - name: Upload release APK (unsigned)
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-gate-connect-release-apk-unsigned
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
