@@ -42,3 +42,8 @@ The Android-side `AndroidTunBuilder` helper wraps `VpnService.Builder` operation
 ## Next milestone
 
 Vendor a pinned OpenVPN 3 client-core revision, implement the JNI bridge and `TunBuilderBase` adapter, then build and test on a physical Android device. Verify DNS routing, IPv4/IPv6 behavior, reconnect, revoke, and public-IP changes before release.
+
+
+## Android native dependency build
+
+The pinned OpenVPN 3 core is now compiled as part of the Android native target. Install its per-ABI dependencies with `bash scripts/install-android-native-deps.sh`; see [NATIVE_DEPENDENCIES.md](NATIVE_DEPENDENCIES.md) for the pinned vcpkg baseline and ABI mapping. CI performs Kotlin and native-library compilation only and does not package APKs. The JNI boundary remains fail-closed until the real OpenVPN client and Android TUN bridge are complete.
