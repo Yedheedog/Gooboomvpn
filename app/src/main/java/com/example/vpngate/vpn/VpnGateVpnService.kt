@@ -22,6 +22,13 @@ class VpnGateVpnService : VpnService() {
         private const val NOTIFICATION_ID = 4101
     }
 
+    /**
+     * Called from the native OpenVPN transport worker before a socket connects.
+     * Android requires this socket to bypass the VPN being established.
+     */
+    @androidx.annotation.Keep
+    fun protectSocket(fd: Int): Boolean = protect(fd)
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
