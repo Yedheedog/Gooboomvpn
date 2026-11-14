@@ -37,7 +37,7 @@ On a fresh Termux install, first run `pkg update && pkg install git`, clone this
 
 ## Android TUN adapter foundation
 
-The Android-side `AndroidTunBuilder` helper now wraps `VpnService.Builder` operations for session name, MTU, interface addresses, included routes, DNS servers, and route exclusions. Route exclusions intentionally fail closed below Android 13 because the platform cannot represent them safely through the same API. This is an adapter building block only: the JNI `OpenVPNClient` subclass does not yet call it, and the current native library remains a fail-closed placeholder.
+The Android-side `AndroidTunBuilder` helper wraps `VpnService.Builder` operations for session name, MTU, interface addresses, included and excluded routes, DNS servers and search domains, and address-family allow/block settings. Allowing an address family is opt-in because Android's `allowFamily()` permits that traffic to bypass the VPN. Route exclusions intentionally fail closed below Android 13 because the platform cannot represent them safely through the same API. This is an adapter building block only: the JNI `OpenVPNClient` subclass does not yet call it, and the current native library remains a fail-closed placeholder.
 
 ## Next milestone
 
