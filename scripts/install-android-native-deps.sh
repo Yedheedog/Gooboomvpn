@@ -41,9 +41,10 @@ fi
 
 "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
 
-# These triplets match the Android ABIs configured in app/build.gradle.kts:
-# arm64-v8a, armeabi-v7a, and x86_64.
-for triplet in arm64-android arm-android x64-android; do
+# These maintained triplets match the supported Android ABIs configured in
+# app/build.gradle.kts. 32-bit armeabi-v7a is intentionally not shipped:
+# the pinned vcpkg community triplet fails compiler detection with this NDK.
+for triplet in arm64-android x64-android; do
   echo "Installing OpenVPN 3 dependencies for ${triplet}"
   "${VCPKG_ROOT}/vcpkg" install \
     --x-manifest-root="${ROOT}" \
