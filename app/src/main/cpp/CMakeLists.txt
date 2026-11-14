@@ -29,7 +29,7 @@ if(ANDROID)
     endif()
 
     get_filename_component(VPNGATE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
-    set(VPNGATE_DEPS_ROOT "${VPNGATE_REPO_ROOT}/.native-deps/${VPNGATE_VCPKG_TRIPLET}")
+    set(VPNGATE_DEPS_ROOT "${VPNGATE_REPO_ROOT}/.native-deps/${VPNGATE_VCPKG_TRIPLET}/${VPNGATE_VCPKG_TRIPLET}")
     if(NOT EXISTS "${VPNGATE_DEPS_ROOT}/include")
         message(FATAL_ERROR
             "OpenVPN 3 dependencies for ${ANDROID_ABI} are missing. "
