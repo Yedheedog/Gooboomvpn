@@ -10,7 +10,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # TunBuilder/socket bridge are implemented.
 add_library(openvpn3_jni SHARED openvpn3_jni_stub.cpp)
 find_library(log-lib log)
-target_link_libraries(openvpn3_jni PRIVATE ${log-lib})
+# OpenVPN 3's add_core_dependencies() uses the plain target_link_libraries()
+# signature for this target, so keep every link declaration on that target
+# in the plain signature too (CMake forbids mixing the two signatures).
+target_link_libraries(openvpn3_jni ${log-lib})
 target_compile_features(openvpn3_jni PRIVATE cxx_std_20)
 
 set(OPENVPN3_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/openvpn3")
