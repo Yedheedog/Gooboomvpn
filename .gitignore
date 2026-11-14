@@ -4,3 +4,7 @@ local.properties
 build/
 **/build/
 *.iml
+
+# OpenVPN 3 upstream source is fetched at a pinned revision by scripts/fetch-openvpn3.sh.
+# Keep the upstream checkout out of this app repository.
+app/src/main/cpp/third_party/
