@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Keep only the newest source-check run for a branch; avoid wasting CI on stale commits.
+concurrency:
+  group: android-source-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   android-source-checks:
     runs-on: ubuntu-latest
