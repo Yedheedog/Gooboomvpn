@@ -439,10 +439,26 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         return make_java_string(env, evaluated.message.empty()
             ? "OpenVPN rejected the selected profile." : evaluated.message);
     }
-    if (!evaluated.autologin || evaluated.externalPki ||
-        evaluated.privateKeyPasswordRequired) {
+    if (evaluated.externalPki || evaluated.privateKeyPasswordRequired ||
+        !evaluated.staticChallenge.empty()) {
         return make_java_string(env,
-            "This relay profile requires credentials or external key handling that the app does not support yet.");
+            "This relay profile requires external key, private-key password, or challenge handling that the app does not support yet.");
+    }
+
+    // VPN Gate's published OpenVPN setup uses the shared relay credentials
+    // "vpn" / "vpn" when a profile requests username/password authentication.
+    if (!evaluated.autologin) {
+        openvpn::ClientAPI::ProvideCreds credentials;
+        credentials.username = evaluated.userlockedUsername.empty()
+            ? "vpn" : evaluated.userlockedUsername;
+        credentials.password = "vpn";
+        const openvpn::ClientAPI::Status credential_status =
+            client->provide_creds(credentials);
+        if (credential_status.error) {
+            return make_java_string(env, credential_status.message.empty()
+                ? "OpenVPN rejected the VPN Gate relay credentials."
+                : credential_status.message);
+        }
     }
 
     std::thread previous_worker;
