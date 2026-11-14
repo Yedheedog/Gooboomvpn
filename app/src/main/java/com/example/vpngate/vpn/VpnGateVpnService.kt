@@ -29,6 +29,43 @@ class VpnGateVpnService : VpnService() {
     @androidx.annotation.Keep
     fun protectSocket(fd: Int): Boolean = protect(fd)
 
+    /** Receives real OpenVPN 3 events from its native connection worker. */
+    @androidx.annotation.Keep
+    fun onNativeEvent(name: String, info: String, error: Boolean, fatal: Boolean) {
+        when {
+            name == "CONNECTED" -> {
+                VpnConnectionState.update(VpnUiState(VpnPhase.CONNECTED, message = "VPN tunnel connected"))
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, notification("Connected"))
+            }
+            name == "CONNECT_RETURN" && error -> {
+                VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, message = info.ifBlank { "OpenVPN connection failed" }))
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            name == "CONNECT_RETURN" -> {
+                VpnConnectionState.update(VpnUiState())
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            fatal || error -> {
+                VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, message = info.ifBlank { name }))
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            name == "EXITING" || name == "DISCONNECTED" -> {
+                VpnConnectionState.update(VpnUiState())
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            else -> {
+                VpnConnectionState.update(VpnUiState(VpnPhase.STARTING, message = info.ifBlank { name }))
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, notification(info.ifBlank { "Connecting…" }))
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -51,17 +88,12 @@ class VpnGateVpnService : VpnService() {
 
         try {
             require(profile != null && profile.isNotEmpty()) { "The selected relay returned an empty OpenVPN profile." }
-            // This check is deliberately fail-closed. The packaged JNI shim reports false until
-            // the upstream OpenVPN 3 core and Android TunBuilder adapter are linked into the APK.
             if (!OpenVpn3Native.isCoreAvailable()) {
-                throw IllegalStateException(
-                    "OpenVPN 3 core is not packaged yet. Android VPN permission and service lifecycle are ready, but no tunnel will be started."
-                )
+                throw IllegalStateException("OpenVPN 3 native core is unavailable.")
             }
-            // The actual OpenVPN 3 client must be started here on a worker thread. It must call
-            // protect(fd) for its transport socket and use TunBuilder callbacks to create/close
-            // the Android TUN interface. Never mark CONNECTED from this service's start request.
-            throw IllegalStateException("OpenVPN 3 Android TunBuilder/JNI adapter is not linked.")
+            val startError = OpenVpn3Native.start(this, profile)
+            if (startError != null) throw IllegalStateException(startError)
+            // CONNECTED is set only by the native OpenVPN CONNECTED event callback.
         } catch (t: Throwable) {
             VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, server, t.message ?: "VPN startup failed"))
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -75,7 +107,9 @@ class VpnGateVpnService : VpnService() {
 
     private fun stopVpn() {
         VpnConnectionState.update(VpnUiState(VpnPhase.DISCONNECTING, message = "Disconnecting…"))
-        // Once the native core is linked, invoke its thread-safe stop() before closing TUN.
+        if (OpenVpn3Native.isCoreAvailable()) {
+            Thread { OpenVpn3Native.stop() }.start()
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         VpnConnectionState.update(VpnUiState())
         stopSelf()
@@ -88,6 +122,9 @@ class VpnGateVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        if (OpenVpn3Native.isCoreAvailable()) {
+            Thread { OpenVpn3Native.stop() }.start()
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
