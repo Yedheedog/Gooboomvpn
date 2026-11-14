@@ -2,6 +2,11 @@
 
 #include <string>
 #include <vector>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <atomic>
+#include <algorithm>
 #include <sys/socket.h>
 
 #include "ovpncli.hpp"
@@ -45,6 +50,9 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         jclass service_class = env->GetObjectClass(service);
         if (service_class != nullptr) {
             protect_method_ = env->GetMethodID(service_class, "protectSocket", "(I)Z");
+            event_method_ = env->GetMethodID(
+                service_class, "onNativeEvent",
+                "(Ljava/lang/String;Ljava/lang/String;ZZ)V");
             env->DeleteLocalRef(service_class);
         }
 
@@ -107,9 +115,16 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
 
     bool pause_on_connection_timeout() override { return false; }
 
-    void event(const openvpn::ClientAPI::Event &) override {}
+    void event(const openvpn::ClientAPI::Event &event) override {
+        emit_event(event.name, event.info, event.error, event.fatal);
+    }
     void acc_event(const openvpn::ClientAPI::AppCustomControlMessageEvent &) override {}
     void log(const openvpn::ClientAPI::LogInfo &) override {}
+
+    void emit_status(const openvpn::ClientAPI::Status &status) {
+        if (status.error) emit_event("CONNECT_RETURN", status.message, true, true);
+        else emit_event("CONNECT_RETURN", status.message, false, false);
+    }
 
     void external_pki_cert_request(openvpn::ClientAPI::ExternalPKICertRequest &request) override {
         request.error = true;
@@ -272,6 +287,27 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     }
 
   private:
+    void emit_event(const std::string &name, const std::string &info,
+                    bool error, bool fatal) {
+        ScopedJniEnv scoped(g_vm);
+        JNIEnv *env = scoped.get();
+        if (env == nullptr || service_ == nullptr || event_method_ == nullptr) return;
+        jstring jname = env->NewStringUTF(name.c_str());
+        jstring jinfo = env->NewStringUTF(info.c_str());
+        if (jname == nullptr || jinfo == nullptr || env->ExceptionCheck()) {
+            clear_exception(env);
+            if (jname != nullptr) env->DeleteLocalRef(jname);
+            if (jinfo != nullptr) env->DeleteLocalRef(jinfo);
+            return;
+        }
+        env->CallVoidMethod(service_, event_method_, jname, jinfo,
+                            error ? JNI_TRUE : JNI_FALSE,
+                            fatal ? JNI_TRUE : JNI_FALSE);
+        env->DeleteLocalRef(jname);
+        env->DeleteLocalRef(jinfo);
+        clear_exception(env);
+    }
+
     static bool clear_exception(JNIEnv *env) {
         if (env != nullptr && env->ExceptionCheck()) {
             env->ExceptionClear();
@@ -338,6 +374,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
 
     jobject service_ = nullptr;
     jmethodID protect_method_ = nullptr;
+    jmethodID event_method_ = nullptr;
     jclass tun_builder_class_ = nullptr;
     jobject tun_builder_ = nullptr;
     jmethodID tun_builder_ctor_ = nullptr;
@@ -353,6 +390,15 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     jmethodID close_method_ = nullptr;
 };
 
+std::mutex g_client_mutex;
+std::shared_ptr<AndroidOpenVPNClient> g_client;
+std::thread g_connect_worker;
+std::atomic<bool> g_connect_running{false};
+
+jstring make_java_string(JNIEnv *env, const std::string &value) {
+    return env->NewStringUTF(value.c_str());
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
@@ -362,8 +408,85 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_vpngate_vpn_OpenVpn3Native_nativeCoreAvailable(JNIEnv *, jobject) {
-    // The adapter callbacks are implemented, but availability stays disabled
-    // until native client creation, worker lifecycle, and real event delivery
-    // are connected and exercised on an Android device.
-    return JNI_FALSE;
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
+    JNIEnv *env, jobject, jobject service, jbyteArray profile_bytes) {
+    if (env == nullptr || service == nullptr || profile_bytes == nullptr) {
+        return make_java_string(env, "Missing VPN service or OpenVPN profile.");
+    }
+
+    const jsize length = env->GetArrayLength(profile_bytes);
+    if (length <= 0) return make_java_string(env, "The OpenVPN profile is empty.");
+    std::vector<jbyte> bytes(static_cast<size_t>(length));
+    env->GetByteArrayRegion(profile_bytes, 0, length, bytes.data());
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return make_java_string(env, "Could not read the OpenVPN profile.");
+    }
+    std::string content(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+    std::fill(bytes.begin(), bytes.end(), 0);
+
+    auto client = std::make_shared<AndroidOpenVPNClient>(env, service);
+    openvpn::ClientAPI::Config config;
+    config.content = content;
+    std::fill(content.begin(), content.end(), '\0');
+
+    const openvpn::ClientAPI::EvalConfig evaluated = client->eval_config(config);
+    if (evaluated.error) {
+        return make_java_string(env, evaluated.message.empty()
+            ? "OpenVPN rejected the selected profile." : evaluated.message);
+    }
+    if (!evaluated.autologin || evaluated.externalPki ||
+        evaluated.privateKeyPasswordRequired) {
+        return make_java_string(env,
+            "This relay profile requires credentials or external key handling that the app does not support yet.");
+    }
+
+    std::thread previous_worker;
+    {
+        std::lock_guard<std::mutex> lock(g_client_mutex);
+        if (g_connect_running.load()) {
+            return make_java_string(env, "A VPN connection is already starting or running.");
+        }
+        if (g_connect_worker.joinable()) previous_worker = std::move(g_connect_worker);
+        g_client.reset();
+    }
+    if (previous_worker.joinable()) previous_worker.join();
+
+    {
+        std::lock_guard<std::mutex> lock(g_client_mutex);
+        if (g_connect_running.load()) {
+            return make_java_string(env, "A VPN connection is already starting or running.");
+        }
+        g_client = client;
+        g_connect_running.store(true);
+        try {
+            g_connect_worker = std::thread([client]() {
+                const openvpn::ClientAPI::Status status = client->connect();
+                client->emit_status(status);
+                g_connect_running.store(false);
+            });
+        } catch (const std::exception &e) {
+            g_connect_running.store(false);
+            g_client.reset();
+            return make_java_string(env, std::string("Could not start OpenVPN worker: ") + e.what());
+        }
+    }
+    return nullptr;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStop(JNIEnv *, jobject) {
+    std::thread worker;
+    {
+        std::lock_guard<std::mutex> lock(g_client_mutex);
+        if (g_client) g_client->stop();
+        if (g_connect_worker.joinable()) worker = std::move(g_connect_worker);
+        g_client.reset();
+    }
+    if (worker.joinable()) worker.join();
+    g_connect_running.store(false);
 }
