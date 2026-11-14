@@ -1,0 +1,5 @@
+{
+  "overlay-ports": [
+    "app/src/main/cpp/third_party/openvpn3/deps/vcpkg-ports"
+  ]
+}
