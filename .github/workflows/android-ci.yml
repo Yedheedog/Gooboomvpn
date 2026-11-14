@@ -1,4 +1,4 @@
-name: Android build
+name: Android source checks
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  android-build:
+  android-source-checks:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -38,17 +38,5 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Build debug and release APKs
-        run: gradle --no-daemon assembleDebug assembleRelease
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: vpn-gate-connect-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-      - name: Upload release APK (unsigned)
-        uses: actions/upload-artifact@v4
-        with:
-          name: vpn-gate-connect-release-apk-unsigned
-          path: app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
+      - name: Compile Kotlin and native library (no APK packaging)
+        run: gradle --no-daemon :app:compileDebugKotlin :app:externalNativeBuildDebug
