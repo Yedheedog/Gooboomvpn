@@ -15,6 +15,7 @@ import java.net.InetAddress
  * TunBuilderBase callback to one of these methods. This class does not start OpenVPN by itself.
  * If an exclusion cannot be represented safely on the current Android version, it fails closed.
  */
+@androidx.annotation.Keep
 internal class AndroidTunBuilder(
     private val service: VpnService
 ) : Closeable {
