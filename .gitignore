@@ -8,3 +8,9 @@ build/
 # OpenVPN 3 upstream source is fetched at a pinned revision by scripts/fetch-openvpn3.sh.
 # Keep the upstream checkout out of this app repository.
 app/src/main/cpp/third_party/
+
+# Pinned native dependency checkouts and per-ABI Android libraries.
+.tools/vcpkg/
+.native-deps/
+vcpkg_installed/
+.vcpkg-binary-cache/
