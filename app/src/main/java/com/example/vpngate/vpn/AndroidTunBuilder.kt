@@ -4,6 +4,7 @@ import android.net.IpPrefix
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.system.OsConstants
 import java.io.Closeable
 import java.net.InetAddress
 
@@ -58,6 +59,22 @@ internal class AndroidTunBuilder(
     fun addDnsServer(address: String) = mutate {
         require(address.isNotBlank()) { "DNS server address must not be blank." }
         addDnsServer(address)
+    }
+
+    fun addSearchDomain(domain: String) = mutate {
+        require(domain.isNotBlank() && !domain.contains(' ')) { "Invalid DNS search domain." }
+        addSearchDomain(domain)
+    }
+
+    /**
+     * Mirrors TunBuilderBase::tun_builder_set_allow_family. Android's allowFamily()
+     * explicitly permits a family to bypass the VPN; false therefore means leave it blocked.
+     */
+    fun setAllowFamily(addressFamily: Int, allow: Boolean) = mutate {
+        require(addressFamily == OsConstants.AF_INET || addressFamily == OsConstants.AF_INET6) {
+            "Unsupported address family: $addressFamily"
+        }
+        if (allow) allowFamily(addressFamily)
     }
 
     /**
