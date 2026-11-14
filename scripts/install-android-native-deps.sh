@@ -41,16 +41,15 @@ fi
 
 "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
 
-# These maintained triplets match the supported Android ABIs configured in
-# app/build.gradle.kts. 32-bit armeabi-v7a is intentionally not shipped:
-# the pinned vcpkg community triplet fails compiler detection with this NDK.
+# Pass the shared install root: vcpkg appends the selected triplet directory.
+# CMake consumes the resulting .native-deps/<triplet> tree.
 for triplet in arm64-android x64-android; do
   echo "Installing OpenVPN 3 dependencies for ${triplet}"
   "${VCPKG_ROOT}/vcpkg" install \
     --x-manifest-root="${ROOT}" \
     --triplet "${triplet}" \
-    --x-install-root="${ROOT}/.native-deps/${triplet}" \
+    --x-install-root="${ROOT}/.native-deps" \
     --clean-after-build
 done
 
-echo "Android native dependencies installed under ${ROOT}/.native-deps."
+echo "Android native dependencies installed under ${ROOT}/.native-deps/<triplet>."
