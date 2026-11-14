@@ -35,6 +35,10 @@ On a fresh Termux install, first run `pkg update && pkg install git`, clone this
 
 **Important:** source staging is not native integration. The current CMake target is still a fail-closed JNI stub. The OpenVPN 3 client API, Android `TunBuilderBase` implementation, socket protection callback, worker-thread lifecycle, and packet/TUN handoff must be implemented and built before the app can connect.
 
+## Android TUN adapter foundation
+
+The Android-side `AndroidTunBuilder` helper now wraps `VpnService.Builder` operations for session name, MTU, interface addresses, included routes, DNS servers, and route exclusions. Route exclusions intentionally fail closed below Android 13 because the platform cannot represent them safely through the same API. This is an adapter building block only: the JNI `OpenVPNClient` subclass does not yet call it, and the current native library remains a fail-closed placeholder.
+
 ## Next milestone
 
 Vendor a pinned OpenVPN 3 client-core revision, implement the JNI bridge and `TunBuilderBase` adapter, then build and test on a physical Android device. Verify DNS routing, IPv4/IPv6 behavior, reconnect, revoke, and public-IP changes before release.
