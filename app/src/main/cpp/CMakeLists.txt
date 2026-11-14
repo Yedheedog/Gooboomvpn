@@ -67,6 +67,17 @@ target_sources(openvpn3_jni PRIVATE "${OPENVPN3_ROOT}/client/ovpncli.cpp")
 target_include_directories(openvpn3_jni PRIVATE "${OPENVPN3_ROOT}/client")
 add_core_dependencies(openvpn3_jni)
 
+if(ANDROID)
+    # OpenVPN's pinned findcoredeps.cmake discovers mbedTLS through pkg-config,
+    # but its imported targets currently expose -l names without the vcpkg
+    # library search directories on Android. Supply both vcpkg configurations
+    # explicitly so the NDK linker can resolve the three static mbedTLS libs.
+    target_link_directories(openvpn3_jni PRIVATE
+        "${VPNGATE_DEPS_ROOT}/debug/lib"
+        "${VPNGATE_DEPS_ROOT}/lib"
+    )
+endif()
+
 # Compiling/linking the upstream core alone does not make a usable VPN. The JNI
 # stub intentionally still reports unavailable until a real ClientAPI subclass,
 # TunBuilderBase bridge, protected transport socket, and packet I/O exist.
