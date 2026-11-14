@@ -1,9 +1,11 @@
 package com.example.vpngate.vpn
 
+import android.net.IpPrefix
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.Closeable
+import java.net.InetAddress
 
 /**
  * Android-side owner of the VpnService.Builder configuration for an OpenVPN TunBuilder adapter.
@@ -30,7 +32,7 @@ internal class AndroidTunBuilder(
     }
 
     fun addAddress(address: String, prefixLength: Int) = mutate {
-        require(prefixLength in 0..if (address.contains(':')) 128 else 32) {
+        require(prefixLength in 0..(if (address.contains(':')) 128 else 32)) {
             "Invalid address prefix length."
         }
         addAddress(address, prefixLength)
@@ -50,7 +52,7 @@ internal class AndroidTunBuilder(
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             "Safe route exclusions require Android 13 or newer; refusing a potentially leaky route configuration."
         }
-        excludeRoute(address, prefixLength)
+        excludeRoute(IpPrefix(InetAddress.getByName(address), prefixLength))
     }
 
     fun addDnsServer(address: String) = mutate {
