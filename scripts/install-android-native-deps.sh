@@ -41,15 +41,20 @@ fi
 
 "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
 
-# Pass the shared install root: vcpkg appends the selected triplet directory.
-# CMake consumes the resulting .native-deps/<triplet> tree.
+# Keep each ABI in its own vcpkg manifest install root. A single shared
+# install root is replaced when the next triplet is installed.
 for triplet in arm64-android x64-android; do
   echo "Installing OpenVPN 3 dependencies for ${triplet}"
   "${VCPKG_ROOT}/vcpkg" install \
     --x-manifest-root="${ROOT}" \
     --triplet "${triplet}" \
-    --x-install-root="${ROOT}/.native-deps" \
+    --x-install-root="${ROOT}/.native-deps/${triplet}" \
     --clean-after-build
+  if [ ! -d "${ROOT}/.native-deps/${triplet}/${triplet}/include" ]; then
+    echo "vcpkg did not create the expected ${triplet} include tree." >&2
+    find "${ROOT}/.native-deps/${triplet}" -maxdepth 3 -type d -print >&2 || true
+    exit 1
+  fi
 done
 
-echo "Android native dependencies installed under ${ROOT}/.native-deps/<triplet>."
+echo "Android native dependencies installed under ${ROOT}/.native-deps/<triplet>/<triplet>."
