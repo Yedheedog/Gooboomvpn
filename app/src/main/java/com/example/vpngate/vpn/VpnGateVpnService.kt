@@ -43,7 +43,7 @@ class VpnGateVpnService : VpnService() {
         startForeground(NOTIFICATION_ID, notification("Preparing connection to $server"))
 
         try {
-            require(!profile.isNullOrEmpty()) { "The selected relay returned an empty OpenVPN profile." }
+            require(profile != null && profile.isNotEmpty()) { "The selected relay returned an empty OpenVPN profile." }
             // This check is deliberately fail-closed. The packaged JNI shim reports false until
             // the upstream OpenVPN 3 core and Android TunBuilder adapter are linked into the APK.
             if (!OpenVpn3Native.isCoreAvailable()) {
