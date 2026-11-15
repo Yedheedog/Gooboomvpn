@@ -134,19 +134,19 @@ hmac_replacement = """        // verify the HMAC
             hmac.hmac(local_hmac, hmac_size, buf.c_data(), buf.size());
             if (crypto::memneq(local_hmac, packet_hmac, hmac_size))
             {
-                OPENVPN_LOG("DIAG_CHM: HMAC validation outcome=FAILURE | original_packet_len=" << diag_original_packet_len << " hmac_size=" << hmac_size);
+                OPENVPN_LOG(std::string("DIAG_CHM: HMAC validation outcome=FAILURE | original_packet_len=") + std::to_string(diag_original_packet_len) + " hmac_size=" + std::to_string(hmac_size));
                 buf.reset_size();
                 return Error::HMAC_ERROR;
             }
             static std::atomic<unsigned int> diag_hmac_success_logs{0};
             if (diag_hmac_success_logs.fetch_add(1, std::memory_order_relaxed) < 3)
-                OPENVPN_LOG("DIAG_CHM: HMAC validation outcome=SUCCESS | original_packet_len=" << diag_original_packet_len << " hmac_size=" << hmac_size);
+                OPENVPN_LOG(std::string("DIAG_CHM: HMAC validation outcome=SUCCESS | original_packet_len=") + std::to_string(diag_original_packet_len) + " hmac_size=" + std::to_string(hmac_size));
         }
         else
         {
             static std::atomic<unsigned int> diag_hmac_skipped_logs{0};
             if (diag_hmac_skipped_logs.fetch_add(1, std::memory_order_relaxed) < 3)
-                OPENVPN_LOG("DIAG_CHM: HMAC validation outcome=SKIPPED | original_packet_len=" << diag_original_packet_len);
+                OPENVPN_LOG(std::string("DIAG_CHM: HMAC validation outcome=SKIPPED | original_packet_len=") + std::to_string(diag_original_packet_len));
         }
 """
 if hmac_replacement not in hmac_source:
@@ -175,7 +175,7 @@ new_update = """        size_t outlen;
             out_acc += outlen;
             return true;
         }
-        OPENVPN_LOG("DIAG_CIPHER: mbedtls_cipher_update failure | ret=" << diag_ret << " in_size=" << in_size);
+        OPENVPN_LOG(std::string("DIAG_CIPHER: mbedtls_cipher_update failure | ret=") + std::to_string(diag_ret) + " in_size=" + std::to_string(in_size));
         return false;
 """
 if new_update not in cipher_source:
@@ -199,7 +199,7 @@ new_final = """        size_t outlen;
             out_acc += outlen;
             return true;
         }
-        OPENVPN_LOG("DIAG_CIPHER: mbedtls_cipher_finish failure | ret=" << diag_ret);
+        OPENVPN_LOG(std::string("DIAG_CIPHER: mbedtls_cipher_finish failure | ret=") + std::to_string(diag_ret));
         return false;
 """
 if new_final not in cipher_source:
@@ -223,13 +223,13 @@ decrypt_replacement = """            // decrypt from buf -> work
             const size_t decrypt_bytes = cipher.decrypt(iv_buf, work.data(), work.max_size(), buf.c_data(), buf.size());
             if (!decrypt_bytes)
             {
-                OPENVPN_LOG("DIAG_CHM_FATAL: decrypt_bytes evaluated to ZERO"
-                            << " | original_packet_len=" << diag_original_packet_len
-                            << " | ciphertext_len=" << diag_ciphertext_len
-                            << " | iv_len=" << diag_iv_len
-                            << " | hmac_configured=" << (diag_hmac_configured ? "true" : "false")
-                            << " | hmac_gate=" << (diag_hmac_configured ? "passed" : "not-configured")
-                            << " | decrypt_bytes=" << decrypt_bytes);
+                OPENVPN_LOG(std::string("DIAG_CHM_FATAL: decrypt_bytes evaluated to ZERO")
+                            + " | original_packet_len=" + std::to_string(diag_original_packet_len)
+                            + " | ciphertext_len=" + std::to_string(diag_ciphertext_len)
+                            + " | iv_len=" + std::to_string(diag_iv_len)
+                            + " | hmac_configured=" + (diag_hmac_configured ? "true" : "false")
+                            + " | hmac_gate=" + (diag_hmac_configured ? "passed" : "not-configured")
+                            + " | decrypt_bytes=" + std::to_string(decrypt_bytes));
                 buf.reset_size();
                 return Error::DECRYPT_ERROR;
             }
