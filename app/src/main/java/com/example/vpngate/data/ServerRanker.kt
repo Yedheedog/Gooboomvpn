@@ -56,6 +56,27 @@ object ServerRanker {
         }
     }
 
+    const val MAX_AUTOMATIC_FAILOVER_ATTEMPTS = 3
+
+    /**
+     * Pick a different eligible relay after an unexpected failure. Failed relays are
+     * excluded for the lifetime of the current recovery cycle, and the normal
+     * latency-first policy is retained rather than silently optimizing for bandwidth.
+     */
+    fun nextFailoverCandidate(
+        servers: List<VpnGateServer>,
+        currentServerIp: String?,
+        attemptedServerIps: Set<String>,
+        allowedCountryCodes: Set<String> = emptySet()
+    ): VpnGateServer? {
+        val excluded = attemptedServerIps + listOfNotNull(currentServerIp)
+        return sort(
+            servers,
+            RelaySelectionMode.LOWEST_PING,
+            allowedCountryCodes
+        ).firstOrNull { it.ip !in excluded }
+    }
+
     /** Default automatic policy deliberately favors latency, then throughput. */
     fun fastest(servers: List<VpnGateServer>): VpnGateServer? =
         sort(servers, RelaySelectionMode.LOWEST_PING).firstOrNull()
