@@ -1,7 +1,6 @@
 name: Device-test APK build
 
-# Kept separate from Android source checks. This workflow packages APKs only
-# for an explicit device-test branch or a manual workflow dispatch.
+# Device-test builds package both variants after source checks pass.
 on:
   workflow_dispatch:
   push:
@@ -39,10 +38,10 @@ jobs:
 
       - name: Install Android build dependencies
         run: |
-          sdkmanager --install \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;27.2.12479018" \
+          sdkmanager --install \\
+            "platforms;android-35" \\
+            "build-tools;35.0.0" \\
+            "ndk;27.2.12479018" \\
             "cmake;3.22.1"
 
       - name: Install host pkg-config
@@ -56,30 +55,36 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Test and package debug APK only
+      - name: Test and package debug and release APKs
         run: |
-          gradle --no-daemon \
-            :app:testDebugUnitTest \
-            :app:assembleDebug
+          gradle --no-daemon \\
+            :app:testDebugUnitTest \\
+            :app:assembleDebug \\
+            :app:assembleRelease
 
-      - name: Verify debug APK contents and signature
+      - name: Verify APK contents and debug signature
         shell: bash
         run: |
           set -euo pipefail
           DEBUG_APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          RELEASE_APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -s "$DEBUG_APK"
+          test -s "$RELEASE_APK"
 
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
 
-          "$AAPT" dump badging "$DEBUG_APK" | grep -F "package: name='com.example.vpngate'"
-          for abi in arm64-v8a x86_64; do
-            unzip -Z1 "$DEBUG_APK" | grep -Fx "lib/$abi/libopenvpn3_jni.so" >/dev/null
+          for apk in "$DEBUG_APK" "$RELEASE_APK"; do
+            "$AAPT" dump badging "$apk" | grep -F "package: name='com.example.vpngate'"
+            for abi in arm64-v8a x86_64; do
+              unzip -Z1 "$apk" | grep -Fx "lib/$abi/libopenvpn3_jni.so" >/dev/null
+            done
           done
 
           "$APKSIGNER" verify --verbose "$DEBUG_APK"
-          echo "Debug APK: $DEBUG_APK (debug-key signed)" >> "$GITHUB_STEP_SUMMARY"
-          sha256sum "$DEBUG_APK"
+          echo "Debug APK: $DEBUG_APK (debug-key signed; installable test build)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Release APK: $RELEASE_APK (unsigned; package/ABI contents verified)" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "$DEBUG_APK" "$RELEASE_APK"
 
       - name: Upload device-test APKs
         uses: actions/upload-artifact@v4
@@ -87,5 +92,6 @@ jobs:
           name: vpn-gate-connect-device-test-apks
           path: |
             app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
