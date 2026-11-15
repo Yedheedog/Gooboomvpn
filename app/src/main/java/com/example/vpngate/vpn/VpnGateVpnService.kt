@@ -44,6 +44,18 @@ class VpnGateVpnService : VpnService() {
      * notification lifecycle work onto the main thread, and ignore late events after teardown.
      */
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val trafficStatsPoll = object : Runnable {
+        override fun run() {
+            if (serviceDestroyed || !nativeSessionActive || userRequestedDisconnect) return
+            val stats = runCatching { OpenVpn3Native.tunStats() }.getOrDefault(longArrayOf(0L, 0L))
+            if (stats.size >= 2) {
+                val current = VpnConnectionState.state.value
+                VpnConnectionState.update(current.copy(uploadedBytes = stats[0], downloadedBytes = stats[1]))
+            }
+            mainHandler.postDelayed(this, 1000L)
+        }
+    }
+
     @Volatile private var serviceDestroyed = false
     // Accessed on the main thread; prevents onDestroy() racing an explicit disconnect.
 
@@ -69,12 +81,15 @@ class VpnGateVpnService : VpnService() {
         if (name == "CONNECT_RETURN" || fatal || error ||
             name == "EXITING" || name == "DISCONNECTED") {
             nativeSessionActive = false
+            mainHandler.removeCallbacks(trafficStatsPoll)
         }
 
         when {
             name == "CONNECTED" -> {
                 runCatching { setUnderlyingNetworks(selectedUnderlyingNetwork?.let { arrayOf(it) }) }
-                VpnConnectionState.update(VpnUiState(VpnPhase.CONNECTED, message = "VPN tunnel connected"))
+                VpnConnectionState.update(VpnConnectionState.state.value.copy(phase = VpnPhase.CONNECTED, serverLabel = activeServerLabel, message = "VPN tunnel connected"))
+                mainHandler.removeCallbacks(trafficStatsPoll)
+                mainHandler.post(trafficStatsPoll)
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, notification("Connected"))
             }
@@ -212,6 +227,7 @@ class VpnGateVpnService : VpnService() {
         if (nativeSessionActive) return
 
         userRequestedDisconnect = false
+        VpnConnectionState.update(VpnUiState(VpnPhase.STARTING, message = "Preparing secure connection…"))
         attemptedServerIps.clear()
         automaticFailoverAttempts = 0
         activeServerIp = intent.getStringExtra(EXTRA_SERVER_IP)
@@ -423,6 +439,7 @@ class VpnGateVpnService : VpnService() {
     override fun onDestroy() {
         serviceDestroyed = true
         userRequestedDisconnect = true
+        mainHandler.removeCallbacks(trafficStatsPoll)
         activeProfile?.fill(0)
         activeProfile = null
         if (networkCallbackRegistered) {
