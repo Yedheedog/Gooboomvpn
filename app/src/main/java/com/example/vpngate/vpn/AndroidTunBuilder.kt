@@ -117,14 +117,18 @@ internal class AndroidTunBuilder(
     }
 
     /**
-     * Mirrors TunBuilderBase::tun_builder_set_allow_family. Android's allowFamily()
-     * explicitly permits a family to bypass the VPN; false therefore means leave it blocked.
+     * OpenVPN's "allow" means the address family may use the underlying network when it
+     * is not routed through the tunnel. Android's allowFamily() has exactly that bypass
+     * effect. Do not invoke it: Android already permits a family when an address, route,
+     * or DNS server is added, and blocks an otherwise-unconfigured family by default.
+     * This intentionally fails closed rather than allowing IPv6 to escape an IPv4-only VPN.
      */
     fun setAllowFamily(addressFamily: Int, allow: Boolean) = mutate {
         require(addressFamily == OsConstants.AF_INET || addressFamily == OsConstants.AF_INET6) {
             "Unsupported address family: $addressFamily"
         }
-        if (allow) allowFamily(addressFamily)
+        // Intentionally do not call Builder.allowFamily(); routes/addresses/DNS added
+        // through this adapter implicitly enable the family inside the VPN.
     }
 
     /**
