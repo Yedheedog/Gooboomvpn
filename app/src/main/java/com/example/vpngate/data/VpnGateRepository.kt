@@ -41,6 +41,10 @@ class VpnGateRepository(context: Context? = null) {
         .callTimeout(20, TimeUnit.SECONDS)
         .build()
 
+    @Volatile
+    var lastFetchWarnings: List<String> = emptyList()
+        private set
+
     fun sources(): List<VpnSource> = runCatching {
         val json = preferences?.getString("sources", null) ?: return emptyList()
         val array = JSONArray(json)
@@ -110,14 +114,19 @@ class VpnGateRepository(context: Context? = null) {
         val configured = sources().filter { it.enabled }
         val builtIn = VpnSource("vpngate-default", "VPN Gate", VpnSourceKind.VPN_GATE_CSV, "https://www.vpngate.net/api/iphone/")
         val allSources = listOf(builtIn) + configured
-        deduplicateServers(allSources.flatMap { source ->
+        val warnings = mutableListOf<String>()
+        val fetched = allSources.flatMap { source ->
             runCatching {
                 when (source.kind) {
                     VpnSourceKind.OPENVPN_PROFILE -> listOf(profileServer(source))
                     VpnSourceKind.VPN_GATE_CSV -> fetchCsv(source)
                 }
+            }.onFailure { error ->
+                warnings += "${source.name}: ${error.message ?: error.javaClass.simpleName}"
             }.getOrDefault(emptyList())
-        })
+        }
+        lastFetchWarnings = warnings
+        deduplicateServers(fetched)
     }
 
     /** Keep the first provider's metadata while removing the same relay repeated by other sources. */
