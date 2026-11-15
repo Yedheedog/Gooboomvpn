@@ -623,6 +623,11 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         // VPN Gate profiles are commonly IPv4-only. Do not let the device keep using
         // an unused address family outside the tunnel, which would leak traffic.
         config.allowUnusedAddrFamilies = "no";
+        // VPN Gate relays may push AES-CBC data-channel settings. OpenVPN 3.12
+        // defaults to preferred AEAD-only algorithms, so permit supported
+        // non-preferred data-channel algorithms for relay compatibility.
+        // Keep enableLegacyAlgorithms false: weak legacy ciphers remain disabled.
+        config.enableNonPreferredDCAlgorithms = true;
     
         const openvpn::ClientAPI::EvalConfig evaluated = client->eval_config(config);
         if (evaluated.error) {
