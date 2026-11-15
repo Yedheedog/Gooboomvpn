@@ -141,8 +141,8 @@ private fun VpnGateApp(activity: ComponentActivity) {
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("VPN GATE", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                    Text("OPENVPN RELAY CLIENT", style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
+                    Text("BUST THE GATE", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    Text("ADS-FREE OPENVPN CONNECTOR", style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
                 }
                 IconButton(onClick = { sourceItems = repository.sources(); showSourceDialog = true }, enabled = true) { Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) }
                 IconButton(onClick = { refresh() }, enabled = !loading) { Icon(Icons.Default.Refresh, "Refresh") }
