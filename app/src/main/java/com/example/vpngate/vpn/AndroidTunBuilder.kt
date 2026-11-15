@@ -34,27 +34,30 @@ internal class AndroidTunBuilder(
     }
 
     fun addAddress(address: String, prefixLength: Int) = mutate {
-        require(prefixLength in 0..(if (address.contains(':')) 128 else 32)) {
+        val parsedAddress = parseNumericAddress(address)
+        require(prefixLength in 0..(if (parsedAddress.address.size == 16) 128 else 32)) {
             "Invalid address prefix length."
         }
         addAddress(address, prefixLength)
     }
 
     fun addRoute(address: String, prefixLength: Int) = mutate {
-        require(prefixLength in 0..if (address.contains(':')) 128 else 32) {
+        val parsedAddress = parseNumericAddress(address)
+        require(prefixLength in 0..(if (parsedAddress.address.size == 16) 128 else 32)) {
             "Invalid route prefix length."
         }
         addRoute(address, prefixLength)
     }
 
     fun excludeRoute(address: String, prefixLength: Int) = mutate {
-        require(prefixLength in 0..if (address.contains(':')) 128 else 32) {
+        val parsedAddress = parseNumericAddress(address)
+        require(prefixLength in 0..(if (parsedAddress.address.size == 16) 128 else 32)) {
             "Invalid excluded-route prefix length."
         }
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             "Safe route exclusions require Android 13 or newer; refusing a potentially leaky route configuration."
         }
-        excludeRoute(IpPrefix(InetAddress.getByName(address), prefixLength))
+        excludeRoute(IpPrefix(parsedAddress, prefixLength))
     }
 
     fun addDnsServer(address: String) = mutate {
@@ -91,6 +94,30 @@ internal class AndroidTunBuilder(
         established = true
         builder = null
         descriptor.detachFd()
+    }
+
+    /**
+     * Accept only numeric IP literals. InetAddress.getByName() alone may perform DNS
+     * resolution for hostnames, which is unsafe while configuring a VPN route.
+     */
+    private fun parseNumericAddress(address: String): InetAddress {
+        require(address.isNotBlank()) { "IP address must not be blank." }
+        if (address.contains(':')) {
+            require(address.all { it in "0123456789abcdefABCDEF:." }) {
+                "IPv6 address must be a numeric literal."
+            }
+            require(address.count { it == ':' } >= 2) { "Invalid IPv6 address." }
+            return InetAddress.getByName(address)
+        }
+
+        val octets = address.split('.')
+        require(octets.size == 4 && octets.all { octet ->
+            val value = octet.toIntOrNull()
+            octet.isNotEmpty() && octet.all(Char::isDigit) && value != null && value in 0..255
+        }) { "IPv4 address must be a numeric literal." }
+        return InetAddress.getByAddress(
+            octets.map { it.toInt().toByte() }.toByteArray()
+        )
     }
 
     private inline fun mutate(block: VpnService.Builder.() -> Unit) = synchronized(lock) {
