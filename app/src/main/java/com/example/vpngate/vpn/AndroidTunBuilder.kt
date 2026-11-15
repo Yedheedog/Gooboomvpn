@@ -137,8 +137,9 @@ internal class AndroidTunBuilder(
             "DNS search domain must not be empty or contain surrounding whitespace."
         }
         val normalized = domain.removeSuffix(".")
-        require(normalized.isNotEmpty() && normalized.length <= MAX_DNS_NAME_LENGTH) {
-            "DNS search domain has an invalid total length."
+        require(normalized.isNotEmpty() && normalized.length <= MAX_DNS_NAME_LENGTH &&
+            !normalized.startsWith('.') && !normalized.endsWith('.') && !normalized.contains("..")) {
+            "DNS search domain has an invalid total length or empty label."
         }
         val labels = normalized.split('.')
         require(labels.all { label ->
