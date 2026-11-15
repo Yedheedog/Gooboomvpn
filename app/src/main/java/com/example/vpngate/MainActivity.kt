@@ -48,6 +48,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
     val clipboardManager = LocalClipboardManager.current
     var showLogDialog by remember { mutableStateOf(false) }
     var showSourceDialog by remember { mutableStateOf(false) }
+    var showCountryPicker by remember { mutableStateOf(false) }
     var sourceNameInput by remember { mutableStateOf("") }
     var sourceUrlInput by remember { mutableStateOf("") }
     var sourceMessage by remember { mutableStateOf("") }
@@ -216,15 +217,11 @@ private fun VpnGateApp(activity: ComponentActivity) {
                 Text(message, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 2)
             }
             if (availableCountries.isNotEmpty()) {
-                var expanded by remember { mutableStateOf(false) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Country", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
-                    Box {
-                        TextButton(onClick = { expanded = true }) { Text(if (countryFilter == "ALL") "All countries" else countryFilter) }
-                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            DropdownMenuItem(text = { Text("All countries") }, onClick = { countryFilter = "ALL"; expanded = false })
-                            availableCountries.forEach { code -> DropdownMenuItem(text = { Text(code) }, onClick = { countryFilter = code; expanded = false }) }
-                        }
+                    TextButton(onClick = { showCountryPicker = true }) {
+                        Text(if (countryFilter == "ALL") "All countries" else countryFilter)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose country")
                     }
                     Text("${visibleServers.size} shown", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
                 }
@@ -256,6 +253,38 @@ private fun VpnGateApp(activity: ComponentActivity) {
             Spacer(Modifier.height(4.dp))
             Text("VPN Gate Connect — Build #${BuildConfig.BUILD_NUMBER}", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
+    }
+    if (showCountryPicker) {
+        AlertDialog(
+            onDismissRequest = { showCountryPicker = false },
+            title = { Text("Filter by country") },
+            text = {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    TextButton(
+                        onClick = { countryFilter = "ALL"; showCountryPicker = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("All countries", modifier = Modifier.weight(1f))
+                        if (countryFilter == "ALL") Text("✓", color = MaterialTheme.colorScheme.primary)
+                    }
+                    availableCountries.forEach { code ->
+                        TextButton(
+                            onClick = { countryFilter = code; showCountryPicker = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(code, modifier = Modifier.weight(1f))
+                            if (countryFilter == code) Text("✓", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCountryPicker = false }) { Text("CLOSE") }
+            }
+        )
     }
     if (showSourceDialog) {
         AlertDialog(
