@@ -193,9 +193,13 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
                                  const std::string &gateway,
                                  bool,
                                  bool net30) override {
-        // Android Builder.addAddress has no gateway/net30 equivalent. Do not
-        // pretend those semantics were applied.
-        if (!gateway.empty() || net30) return false;
+        // Android VpnService.Builder represents the interface address and
+        // prefix directly. The peer/gateway value is routing metadata; routes
+        // are installed separately through tun_builder_add_route/reroute_gw.
+        // For net30, the /30 prefix preserves the point-to-point subnet.
+        (void)gateway;
+        (void)ipv6;
+        (void)net30;
         return call_string_int(address_method_, address, prefix_length);
     }
 
