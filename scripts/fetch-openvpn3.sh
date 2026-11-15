@@ -111,7 +111,8 @@ hmac_anchor = """        // verify the HMAC
 """
 hmac_replacement = """        // verify the HMAC
         const size_t diag_original_packet_len = buf.size();
-        if (hmac.defined())
+        const bool diag_hmac_configured = hmac.defined();
+        if (diag_hmac_configured)
         {
             unsigned char local_hmac[CRYPTO_API::HMACContext::MAX_HMAC_SIZE];
             const size_t hmac_size = hmac.output_size();
@@ -214,6 +215,8 @@ decrypt_replacement = """            // decrypt from buf -> work
                             << " | original_packet_len=" << diag_original_packet_len
                             << " | ciphertext_len=" << diag_ciphertext_len
                             << " | iv_len=" << diag_iv_len
+                            << " | hmac_configured=" << (diag_hmac_configured ? "true" : "false")
+                            << " | hmac_gate=" << (diag_hmac_configured ? "passed" : "not-configured")
                             << " | decrypt_bytes=" << decrypt_bytes);
                 buf.reset_size();
                 return Error::DECRYPT_ERROR;
