@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -273,11 +274,15 @@ private fun VpnGateApp(activity: ComponentActivity) {
             if (servers.isEmpty() && !loading) OutlinedButton(onClick = { refresh() }, modifier = Modifier.fillMaxWidth()) { Text("LOAD SERVERS") }
             Text("VPN Gate relays are volunteer-operated. Avoid sensitive traffic on public relays.", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.height(6.dp))
-            OutlinedButton(onClick = { showLogDialog = true }, modifier = Modifier.fillMaxWidth().height(42.dp)) {
-                Text("VIEW / COPY DIAGNOSTIC LOG")
-            }
-            Spacer(Modifier.height(4.dp))
-            Text("VPN Gate Connect — Build #${BuildConfig.BUILD_NUMBER}", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+            Text(
+                "VPN Gate Connect — Build #${BuildConfig.BUILD_NUMBER}",
+                color = Color.Gray,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.combinedClickable(
+                    onClick = {},
+                    onLongClick = { showLogDialog = true }
+                )
+            )
         }
     }
     if (showCountryPicker) {
