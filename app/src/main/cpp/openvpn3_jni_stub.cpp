@@ -519,5 +519,7 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStop(JNIEnv *, jobject) {
         g_client.reset();
     }
     if (worker.joinable()) worker.join();
-    g_connect_running.store(false);
+    // The connect worker owns the running-state transition. A second stop call
+    // may find the worker already moved to another caller; it must not clear the
+    // flag while that first caller is still joining the live worker.
 }
