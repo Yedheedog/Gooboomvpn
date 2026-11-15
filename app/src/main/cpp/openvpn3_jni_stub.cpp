@@ -480,7 +480,17 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_vpngate_vpn_OpenVpn3Native_nativeCoreAvailable(JNIEnv *, jobject) {
-    return JNI_TRUE;
+    // Probe real OpenVPN 3 ClientAPI entry points instead of returning a constant.
+    try {
+        const std::string platform = openvpn::ClientAPI::OpenVPNClientHelper::platform();
+        const std::string copyright = openvpn::ClientAPI::OpenVPNClientHelper::copyright();
+        const long max_profile_size =
+            openvpn::ClientAPI::OpenVPNClientHelper::max_profile_size();
+        return (!platform.empty() && !copyright.empty() && max_profile_size > 0)
+            ? JNI_TRUE : JNI_FALSE;
+    } catch (...) {
+        return JNI_FALSE;
+    }
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -493,7 +503,7 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
     try {
         const jsize length = env->GetArrayLength(profile_bytes);
         if (length <= 0) return make_java_string(env, "The OpenVPN profile is empty.");
-        const long max_profile_size = openvpn::ClientAPI::max_profile_size();
+        const long max_profile_size = openvpn::ClientAPI::OpenVPNClientHelper::max_profile_size();
         if (max_profile_size <= 0 || static_cast<long>(length) > max_profile_size) {
             return make_java_string(env, "The OpenVPN profile exceeds the supported size limit.");
         }
