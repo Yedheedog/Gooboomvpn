@@ -181,6 +181,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         }
         tun_builder_ = env->NewGlobalRef(local);
         env->DeleteLocalRef(local);
+        tun_builder_policy_error_ = false;
         return tun_builder_ != nullptr && !env->ExceptionCheck();
     }
 
@@ -319,7 +320,9 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         env->CallVoidMethod(tun_builder_, allow_family_method_,
                             static_cast<jint>(family),
                             allow ? JNI_TRUE : JNI_FALSE);
-        return !clear_exception(env);
+        const bool failed = clear_exception(env);
+        if (failed) tun_builder_policy_error_ = true;
+        return !failed;
     }
 
     bool tun_builder_set_allow_local_dns(bool) override { return true; }
@@ -327,7 +330,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     int tun_builder_establish() override {
         ScopedJniEnv scoped(g_vm);
         JNIEnv *env = scoped.get();
-        if (!ready(env) || establish_method_ == nullptr) return -1;
+        if (!ready(env) || establish_method_ == nullptr || tun_builder_policy_error_) return -1;
         const jint fd = env->CallIntMethod(tun_builder_, establish_method_);
         if (clear_exception(env) || fd < 0) return -1;
         return static_cast<int>(fd);  // Ownership transfers to OpenVPN core.
@@ -451,6 +454,9 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     jmethodID allow_family_method_ = nullptr;
     jmethodID establish_method_ = nullptr;
     jmethodID close_method_ = nullptr;
+    // Some OpenVPN TunBuilderBase callers do not check the allow-family callback
+    // result. Carry any Android policy rejection forward so establish() still fails.
+    bool tun_builder_policy_error_ = false;
 };
 
 std::mutex g_client_mutex;
@@ -502,6 +508,9 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
     }
     openvpn::ClientAPI::Config config;
     config.content = content;
+    // VPN Gate profiles are commonly IPv4-only. Do not let the device keep using
+    // an unused address family outside the tunnel, which would leak traffic.
+    config.allowUnusedAddrFamilies = "no";
     std::fill(content.begin(), content.end(), '\0');
 
     const openvpn::ClientAPI::EvalConfig evaluated = client->eval_config(config);
