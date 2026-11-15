@@ -77,7 +77,7 @@ PY
 
 # Add narrowly scoped receive-path diagnostics to the pinned OpenVPN 3 source.
 # This is intentionally applied after the mbedTLS context initialization patch.
-python3 - "\${DEST}" <<'PY'
+python3 - "${DEST}" <<'PY'
 from pathlib import Path
 import sys
 
