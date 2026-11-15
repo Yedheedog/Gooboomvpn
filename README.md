@@ -25,6 +25,7 @@ These are planned enhancements to revisit after the core VPN passes quality cont
 - [ ] **Multi-source server discovery:** combine servers from enabled sources and make the source/provider visible for each server; only include compatible and validated sources in automatic selection.
 - [ ] **Automatic failover:** move to another suitable relay when the active relay fails.
 - [ ] **Country filtering:** allow users to limit which countries are considered by fastest-server selection.
+- [ ] **Available-list sorting:** add a sort button directly below the Available section heading/list controls, with options for **Highest speed** (throughput descending) and **Lowest ping** (ping ascending); keep sorting separate from the automatic fastest-server selection policy.
 - [ ] **Improved server ranking:** supplement published VPN Gate metadata with measured connection performance where practical.
 - [ ] **Connection recovery:** handle Wi-Fi/mobile-data changes and reconnect safely.
 
