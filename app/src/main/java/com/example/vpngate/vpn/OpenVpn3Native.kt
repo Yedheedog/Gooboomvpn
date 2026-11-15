@@ -20,7 +20,10 @@ object OpenVpn3Native {
         if (loaded) nativeStop()
     }
 
+    fun tunStats(): LongArray = if (loaded) nativeTunStats() else longArrayOf(0L, 0L)
+
     private external fun nativeCoreAvailable(): Boolean
     private external fun nativeStart(service: VpnGateVpnService, profile: ByteArray): String?
     private external fun nativeStop()
+    private external fun nativeTunStats(): LongArray
 }
