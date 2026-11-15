@@ -191,7 +191,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     bool tun_builder_add_address(const std::string &address,
                                  int prefix_length,
                                  const std::string &gateway,
-                                 bool,
+                                 bool ipv6,
                                  bool net30) override {
         // Android VpnService.Builder represents the interface address and
         // prefix directly. The peer/gateway value is routing metadata; routes
