@@ -11,16 +11,24 @@ if [ ! -d "${ROOT}/app/src/main/cpp/third_party/openvpn3/.git" ]; then
   exit 1
 fi
 
-if [ -z "${ANDROID_NDK_HOME:-}" ]; then
-  SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-  if [ -n "${SDK_ROOT}" ] && [ -d "${SDK_ROOT}/ndk/${NDK_VERSION}" ]; then
-    export ANDROID_NDK_HOME="${SDK_ROOT}/ndk/${NDK_VERSION}"
-  fi
+SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+PINNED_NDK_HOME=""
+if [ -n "${SDK_ROOT}" ]; then
+  PINNED_NDK_HOME="${SDK_ROOT}/ndk/${NDK_VERSION}"
 fi
-if [ -z "${ANDROID_NDK_HOME:-}" ] || [ ! -f "${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" ]; then
+
+# setup-android may export a different preinstalled NDK. Always prefer the
+# exact version used by Gradle/CMake so vcpkg and the JNI target share a toolchain.
+if [ -n "${PINNED_NDK_HOME}" ] && [ -d "${PINNED_NDK_HOME}" ]; then
+  export ANDROID_NDK_HOME="${PINNED_NDK_HOME}"
+fi
+if [ -z "${ANDROID_NDK_HOME:-}" ] ||
+   [ ! -f "${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" ] ||
+   ! grep -Fxq "Pkg.Revision = ${NDK_VERSION}" "${ANDROID_NDK_HOME}/source.properties"; then
   echo "ANDROID_NDK_HOME must point to Android NDK ${NDK_VERSION}." >&2
   exit 1
 fi
+echo "Using pinned Android NDK ${NDK_VERSION}: ${ANDROID_NDK_HOME}"
 
 if [ -e "${VCPKG_ROOT}" ] && [ ! -d "${VCPKG_ROOT}/.git" ]; then
   echo "Refusing to use non-git VCPKG_ROOT: ${VCPKG_ROOT}" >&2
