@@ -95,11 +95,14 @@ private fun VpnGateApp(activity: ComponentActivity) {
         if (uri != null) runCatching {
             val bytes = activity.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: error("Could not read selected profile")
-            repository.addProfileSource(sourceNameInput.ifBlank { "Imported profile" }, bytes)
-            bytes.fill(0)
-            sourceItems = repository.sources()
-            sourceMessage = "OpenVPN profile imported"
-            refresh()
+            try {
+                repository.addProfileSource(sourceNameInput.ifBlank { "Imported profile" }, bytes)
+                sourceItems = repository.sources()
+                sourceMessage = "OpenVPN profile imported"
+                refresh()
+            } finally {
+                bytes.fill(0)
+            }
         }.onFailure { sourceMessage = it.message ?: "Could not import profile" }
     }
 
