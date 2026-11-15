@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Keep the JNI boundary fail-closed until the real client adapter and Android
-# TunBuilder/socket bridge are implemented.
+# This target contains the Android ClientAPI adapter, JNI callbacks, TUN
+# builder bridge, and VpnService socket-protection integration.
 add_library(openvpn3_jni SHARED openvpn3_jni_stub.cpp)
 find_library(log-lib log)
 # OpenVPN 3's add_core_dependencies() uses the plain target_link_libraries()
@@ -78,6 +78,6 @@ if(ANDROID)
     )
 endif()
 
-# Compiling/linking the upstream core alone does not make a usable VPN. The JNI
-# stub intentionally still reports unavailable until a real ClientAPI subclass,
-# TunBuilderBase bridge, protected transport socket, and packet I/O exist.
+# Source compilation proves the JNI adapter and OpenVPN core link together.
+# It does not verify a live relay handshake, packet forwarding, or leak behavior;
+# those require end-to-end tests on a physical Android device.
