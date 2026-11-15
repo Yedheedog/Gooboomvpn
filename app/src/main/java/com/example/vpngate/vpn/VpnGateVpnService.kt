@@ -60,6 +60,7 @@ class VpnGateVpnService : VpnService() {
         // An explicit disconnect owns the state transition until nativeStop() has
         // joined the OpenVPN worker. Ignore late CONNECTED/terminal events meanwhile.
         if (nativeStopInProgress) return
+        val sessionWasActive = nativeSessionActive
         if (name == "CONNECT_RETURN" || fatal || error ||
             name == "EXITING" || name == "DISCONNECTED") {
             nativeSessionActive = false
@@ -72,12 +73,14 @@ class VpnGateVpnService : VpnService() {
                     .notify(NOTIFICATION_ID, notification("Connected"))
             }
             name == "CONNECT_RETURN" && error -> beginAutomaticFailover(info)
+            name == "CONNECT_RETURN" && sessionWasActive -> beginAutomaticFailover("OpenVPN session ended unexpectedly")
             name == "CONNECT_RETURN" -> {
                 VpnConnectionState.update(VpnUiState())
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
             fatal || error -> beginAutomaticFailover(info)
+            (name == "EXITING" || name == "DISCONNECTED") && sessionWasActive -> beginAutomaticFailover(info.ifBlank { "Relay disconnected unexpectedly" })
             name == "EXITING" || name == "DISCONNECTED" -> {
                 VpnConnectionState.update(VpnUiState())
                 stopForeground(STOP_FOREGROUND_REMOVE)
