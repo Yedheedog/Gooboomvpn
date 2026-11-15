@@ -22,6 +22,9 @@ internal class AndroidTunBuilder(
     private val lock = Any()
     private var builder: VpnService.Builder? = service.Builder()
     private var established = false
+    // Android implicitly enables a family when an address, route, or DNS server is added.
+    // Track those changes so a later OpenVPN block-ipv4/block-ipv6 request cannot be ignored.
+    private val configuredFamilies = mutableSetOf<Int>()
 
     fun setSessionName(name: String) = mutate {
         require(name.isNotBlank()) { "VPN session name must not be blank." }
@@ -78,6 +81,7 @@ internal class AndroidTunBuilder(
         // point-to-point peer parameter. Validate OpenVPN's gateway/topology metadata
         // before applying the address; OpenVPN routes are installed by their own callbacks.
         addAddress(address, prefixLength)
+        configuredFamilies += familyFor(ipv6)
     }
 
     fun addRoute(address: String, prefixLength: Int, ipv6: Boolean) = mutate {
@@ -89,6 +93,7 @@ internal class AndroidTunBuilder(
             "Invalid route prefix length."
         }
         addRoute(address, prefixLength)
+        configuredFamilies += familyFor(ipv6)
     }
 
     fun excludeRoute(address: String, prefixLength: Int, ipv6: Boolean) = mutate {
@@ -108,7 +113,13 @@ internal class AndroidTunBuilder(
     fun addDnsServer(address: String) = mutate {
         // DNS endpoints must be numeric literals; never trigger name resolution
         // while the VPN interface is being assembled.
-        addDnsServer(parseNumericAddress(address))
+        val parsedAddress = parseNumericAddress(address)
+        addDnsServer(parsedAddress)
+        configuredFamilies += if (parsedAddress.address.size == 16) {
+            OsConstants.AF_INET6
+        } else {
+            OsConstants.AF_INET
+        }
     }
 
     fun addSearchDomain(domain: String) = mutate {
@@ -117,18 +128,22 @@ internal class AndroidTunBuilder(
     }
 
     /**
-     * OpenVPN's "allow" means the address family may use the underlying network when it
-     * is not routed through the tunnel. Android's allowFamily() has exactly that bypass
-     * effect. Do not invoke it: Android already permits a family when an address, route,
-     * or DNS server is added, and blocks an otherwise-unconfigured family by default.
-     * This intentionally fails closed rather than allowing IPv6 to escape an IPv4-only VPN.
+     * Android enables a family implicitly when an address, route, or DNS server is added.
+     * Builder.allowFamily() would instead allow otherwise-unconfigured traffic to escape over
+     * the underlying network. Never call it. If OpenVPN explicitly blocks a family that has
+     * already been configured, Android cannot represent that policy safely, so reject the TUN
+     * setup rather than silently violating the profile's block-ipv4/block-ipv6 directive.
      */
     fun setAllowFamily(addressFamily: Int, allow: Boolean) = mutate {
         require(addressFamily == OsConstants.AF_INET || addressFamily == OsConstants.AF_INET6) {
             "Unsupported address family: $addressFamily"
         }
-        // Intentionally do not call Builder.allowFamily(); routes/addresses/DNS added
-        // through this adapter implicitly enable the family inside the VPN.
+        if (!allow) {
+            check(addressFamily !in configuredFamilies) {
+                "OpenVPN blocked an address family after configuring it; Android cannot enforce this safely."
+            }
+        }
+        // Intentionally do not call Builder.allowFamily(); unconfigured families stay blocked.
     }
 
     /**
@@ -169,6 +184,9 @@ internal class AndroidTunBuilder(
             octets.map { it.toInt().toByte() }.toByteArray()
         )
     }
+
+    private fun familyFor(ipv6: Boolean): Int =
+        if (ipv6) OsConstants.AF_INET6 else OsConstants.AF_INET
 
     private inline fun mutate(block: VpnService.Builder.() -> Unit) = synchronized(lock) {
         check(!established) { "VPN interface is already established." }
