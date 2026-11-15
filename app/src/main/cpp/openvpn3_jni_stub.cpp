@@ -74,7 +74,8 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
             mtu_method_ = env->GetMethodID(
                 tun_builder_class_, "setMtu", "(I)V");
             address_method_ = env->GetMethodID(
-                tun_builder_class_, "addAddress", "(Ljava/lang/String;I)V");
+                tun_builder_class_, "addAddress",
+                "(Ljava/lang/String;ILjava/lang/String;ZZ)V");
             route_method_ = env->GetMethodID(
                 tun_builder_class_, "addRoute", "(Ljava/lang/String;I)V");
             exclude_route_method_ = env->GetMethodID(
@@ -193,14 +194,24 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
                                  const std::string &gateway,
                                  bool ipv6,
                                  bool net30) override {
-        // Android VpnService.Builder represents the interface address and
-        // prefix directly. The peer/gateway value is routing metadata; routes
-        // are installed separately through tun_builder_add_route/reroute_gw.
-        // For net30, the /30 prefix preserves the point-to-point subnet.
-        (void)gateway;
-        (void)ipv6;
-        (void)net30;
-        return call_string_int(address_method_, address, prefix_length);
+        ScopedJniEnv scoped(g_vm);
+        JNIEnv *env = scoped.get();
+        if (!ready(env) || address_method_ == nullptr) return false;
+        jstring jaddress = env->NewStringUTF(address.c_str());
+        jstring jgateway = env->NewStringUTF(gateway.c_str());
+        if (jaddress == nullptr || jgateway == nullptr || env->ExceptionCheck()) {
+            clear_exception(env);
+            if (jaddress != nullptr) env->DeleteLocalRef(jaddress);
+            if (jgateway != nullptr) env->DeleteLocalRef(jgateway);
+            return false;
+        }
+        env->CallVoidMethod(tun_builder_, address_method_, jaddress,
+                            static_cast<jint>(prefix_length), jgateway,
+                            ipv6 ? JNI_TRUE : JNI_FALSE,
+                            net30 ? JNI_TRUE : JNI_FALSE);
+        env->DeleteLocalRef(jaddress);
+        env->DeleteLocalRef(jgateway);
+        return !clear_exception(env);
     }
 
     bool tun_builder_set_route_metric_default(int) override { return true; }
