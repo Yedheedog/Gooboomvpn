@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 
 #include "ovpncli.hpp"
+#include "openvpn/client/rgopt.hpp"
 
 namespace {
 
@@ -218,7 +219,26 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     // reachability and document that OpenVPN metrics cannot be represented here.
     bool tun_builder_set_route_metric_default(int) override { return true; }
 
-    bool tun_builder_reroute_gw(bool ipv4, bool ipv6, unsigned int) override {
+    bool tun_builder_reroute_gw(bool ipv4, bool ipv6, unsigned int flags) override {
+        // Android's Builder can install default routes, but this adapter does not
+        // yet implement OpenVPN's DHCP/DNS bypass or block-local redirect flags.
+        // Reject those policies instead of silently weakening the requested routing.
+        const unsigned int unsupported_flags =
+            openvpn::RedirectGatewayFlags::RG_BYPASS_DHCP |
+            openvpn::RedirectGatewayFlags::RG_BYPASS_DNS |
+            openvpn::RedirectGatewayFlags::RG_BLOCK_LOCAL;
+        const unsigned int known_flags =
+            openvpn::RedirectGatewayFlags::RG_ENABLE |
+            openvpn::RedirectGatewayFlags::RG_REROUTE_GW |
+            openvpn::RedirectGatewayFlags::RG_LOCAL |
+            openvpn::RedirectGatewayFlags::RG_AUTO_LOCAL |
+            openvpn::RedirectGatewayFlags::RG_DEF1 |
+            openvpn::RedirectGatewayFlags::RG_BYPASS_DHCP |
+            openvpn::RedirectGatewayFlags::RG_BYPASS_DNS |
+            openvpn::RedirectGatewayFlags::RG_BLOCK_LOCAL |
+            openvpn::RedirectGatewayFlags::RG_IPv4 |
+            openvpn::RedirectGatewayFlags::RG_IPv6;
+        if ((flags & unsupported_flags) != 0 || (flags & ~known_flags) != 0) return false;
         if (ipv4 && !call_string_int(route_method_, "0.0.0.0", 0)) return false;
         if (ipv6 && !call_string_int(route_method_, "::", 0)) return false;
         return true;
