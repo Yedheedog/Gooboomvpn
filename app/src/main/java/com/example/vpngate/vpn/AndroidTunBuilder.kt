@@ -123,9 +123,37 @@ internal class AndroidTunBuilder(
     }
 
     fun addSearchDomain(domain: String) = mutate {
-        require(domain.isNotBlank() && !domain.contains(' ')) { "Invalid DNS search domain." }
-        addSearchDomain(domain)
+        val normalizedDomain = validateSearchDomain(domain)
+        addSearchDomain(normalizedDomain)
     }
+
+    /**
+     * Android's VPN builder accepts DNS search suffixes, not arbitrary text. Validate
+     * DNS label boundaries and lengths before passing server-pushed values to the platform.
+     * A single trailing root dot is accepted and removed for Android's API.
+     */
+    private fun validateSearchDomain(domain: String): String {
+        require(domain.isNotEmpty() && domain == domain.trim()) {
+            "DNS search domain must not be empty or contain surrounding whitespace."
+        }
+        val normalized = domain.removeSuffix(".")
+        require(normalized.isNotEmpty() && normalized.length <= MAX_DNS_NAME_LENGTH) {
+            "DNS search domain has an invalid total length."
+        }
+        val labels = normalized.split('.')
+        require(labels.all { label ->
+            label.length in 1..MAX_DNS_LABEL_LENGTH &&
+                isAsciiAlphaNumeric(label.first()) &&
+                isAsciiAlphaNumeric(label.last()) &&
+                label.all { isAsciiAlphaNumeric(it) || it == '-' }
+        }) {
+            "DNS search domain contains an invalid DNS label."
+        }
+        return normalized
+    }
+
+    private fun isAsciiAlphaNumeric(char: Char): Boolean =
+        char in 'a'..'z' || char in 'A'..'Z' || char in '0'..'9'
 
     /**
      * Android enables a family implicitly when an address, route, or DNS server is added.
@@ -203,5 +231,7 @@ internal class AndroidTunBuilder(
     private companion object {
         const val MIN_MTU = 576
         const val MAX_MTU = 9000
+        const val MAX_DNS_LABEL_LENGTH = 63
+        const val MAX_DNS_NAME_LENGTH = 253
     }
 }
