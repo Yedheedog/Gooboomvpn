@@ -5,5 +5,6 @@ Revision: 0c1ce172fe918b05463d71e682a0c2f2d8fe7899
 Commit date: 2026-11-04
 Commit subject: clang-tidy: Disable readability-braces-around-statements
 
-The source is fetched by scripts/fetch-openvpn3.sh. The revision is pinned for reproducible
-integration; this file is metadata, not a claim that the native core is already linked.
+The source is fetched by scripts/fetch-openvpn3.sh and compiled into the Android JNI shared
+library by app/src/main/cpp/CMakeLists.txt. The pin makes source integration reproducible;
+it does not claim that a physical-device VPN connection has been verified.
