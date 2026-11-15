@@ -67,10 +67,10 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         if (env == nullptr || service == nullptr) return;
 
         service_ = env->NewGlobalRef(service);
-        if (service_ == nullptr || clear_exception(env)) return;
+        if (clear_exception(env) || service_ == nullptr) return;
 
         jclass service_class = env->GetObjectClass(service);
-        if (service_class == nullptr || clear_exception(env)) return;
+        if (clear_exception(env) || service_class == nullptr) return;
         protect_method_ = lookup_method(env, service_class, "protectSocket", "(I)Z");
         event_method_ = lookup_method(
             env, service_class, "onNativeEvent",
@@ -82,11 +82,12 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         // FindClass with the worker thread's (often boot) class loader.
         jclass local_builder_class =
             env->FindClass("com/example/vpngate/vpn/AndroidTunBuilder");
-        if (local_builder_class == nullptr || clear_exception(env)) return;
+        if (clear_exception(env) || local_builder_class == nullptr) return;
         tun_builder_class_ =
             static_cast<jclass>(env->NewGlobalRef(local_builder_class));
+        const bool builder_ref_failed = clear_exception(env);
         env->DeleteLocalRef(local_builder_class);
-        if (tun_builder_class_ == nullptr || clear_exception(env)) return;
+        if (builder_ref_failed || tun_builder_class_ == nullptr) return;
 
         tun_builder_ctor_ = lookup_method(
             env, tun_builder_class_, "<init>", "(Landroid/net/VpnService;)V");
