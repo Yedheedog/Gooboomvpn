@@ -22,7 +22,11 @@ class ScopedWipe {
     ScopedWipe(const ScopedWipe &) = delete;
     ScopedWipe &operator=(const ScopedWipe &) = delete;
     ~ScopedWipe() {
-        std::fill(value_.begin(), value_.end(), typename Container::value_type{});
+        // Volatile writes prevent the optimizer from eliding the cleanup as dead stores.
+        volatile typename Container::value_type *data = value_.data();
+        for (decltype(value_.size()) i = 0; i < value_.size(); ++i) {
+            data[i] = typename Container::value_type{};
+        }
     }
 
   private:
