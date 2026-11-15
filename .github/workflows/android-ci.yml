@@ -2,7 +2,7 @@ name: Android source checks
 
 on:
   push:
-    branches: [main, "work/**"]
+    branches: [main, "work/**", "feature/**"]
   pull_request:
   workflow_dispatch:
 
