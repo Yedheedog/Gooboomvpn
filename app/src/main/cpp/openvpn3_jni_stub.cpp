@@ -147,6 +147,13 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
 
     bool pause_on_connection_timeout() override { return false; }
 
+    // OpenVPNClient::stop() is ignored until connect_setup() enables foreign-thread access.
+    // Remember an early stop and re-issue it from connect_run() once that access is ready.
+    void request_stop() {
+        stop_requested_.store(true, std::memory_order_release);
+        OpenVPNClient::stop();
+    }
+
     void event(const openvpn::ClientAPI::Event &event) override {
         emit_event(event.name, event.info, event.error, event.fatal);
     }
@@ -376,6 +383,15 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     }
 
   private:
+    void connect_run() override {
+        // connect_setup() enables foreign-thread access immediately before this method.
+        // If request_stop() raced startup, the earlier stop() could not reach the core.
+        if (stop_requested_.load(std::memory_order_acquire)) {
+            OpenVPNClient::stop();
+        }
+        OpenVPNClient::connect_run();
+    }
+
     void emit_event(const std::string &name, const std::string &info,
                     bool error, bool fatal) {
         ScopedJniEnv scoped(g_vm);
@@ -482,6 +498,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     // Some OpenVPN TunBuilderBase callers do not check the allow-family callback
     // result. Carry any Android policy rejection forward so establish() still fails.
     bool tun_builder_policy_error_ = false;
+    std::atomic<bool> stop_requested_{false};
 };
 
 std::mutex g_client_mutex;
@@ -643,7 +660,7 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStop(JNIEnv *, jobject) {
     std::thread worker;
     {
         std::lock_guard<std::mutex> lock(g_client_mutex);
-        if (g_client) g_client->stop();
+        if (g_client) g_client->request_stop();
         if (g_connect_worker.joinable()) worker = std::move(g_connect_worker);
         g_client.reset();
     }
