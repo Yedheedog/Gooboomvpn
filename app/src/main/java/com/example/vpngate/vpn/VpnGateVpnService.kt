@@ -44,6 +44,7 @@ class VpnGateVpnService : VpnService() {
 
     @androidx.annotation.Keep
     fun onNativeEvent(name: String, info: String, error: Boolean, fatal: Boolean) {
+        NativeDiagnosticLog.append("EVENT $name error=$error fatal=$fatal $info")
         mainHandler.post {
             if (serviceDestroyed) return@post
             handleNativeEvent(name, info, error, fatal)
