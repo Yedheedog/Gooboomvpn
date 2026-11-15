@@ -128,6 +128,7 @@ jobs:
             done
           done
 
+          "$AAPT" dump badging "$RELEASE_APK" | grep -F "versionName='$VERSION'"
           "$APKSIGNER" verify --verbose "$DEBUG_APK"
           "$APKSIGNER" verify --verbose "$RELEASE_APK"
 
