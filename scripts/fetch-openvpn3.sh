@@ -113,8 +113,8 @@ cipher_replacements = [
     'diagnostic_cipher_name'
 ),
 (
-    '        erase();\n\n        check_mode(mode);\n',
-    '        erase();\n        diagnostic_cipher_name = CryptoAlgs::name(alg);\n\n        check_mode(mode);\n',
+    '        erase();\n\n        // mbedtls_cipher_free() clears a previously used context; initialize it\n        // again before setup, as required by the mbedTLS cipher API.\n        mbedtls_cipher_init(&ctx);\n        check_mode(mode);\n',
+    '        erase();\n        diagnostic_cipher_name = CryptoAlgs::name(alg);\n\n        // mbedtls_cipher_free() clears a previously used context; initialize it\n        // again before setup, as required by the mbedTLS cipher API.\n        mbedtls_cipher_init(&ctx);\n        check_mode(mode);\n',
     'cipher name capture'
 ),
 (
