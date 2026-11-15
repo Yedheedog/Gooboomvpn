@@ -34,11 +34,12 @@ class VpnGateVpnService : VpnService() {
      * notification lifecycle work onto the main thread, and ignore late events after teardown.
      */
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var serviceDestroyed = false
 
     @androidx.annotation.Keep
     fun onNativeEvent(name: String, info: String, error: Boolean, fatal: Boolean) {
         mainHandler.post {
-            if (isDestroyed) return@post
+            if (serviceDestroyed) return@post
             handleNativeEvent(name, info, error, fatal)
         }
     }
@@ -134,6 +135,7 @@ class VpnGateVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        serviceDestroyed = true
         if (OpenVpn3Native.isCoreAvailable()) {
             Thread { OpenVpn3Native.stop() }.start()
         }
