@@ -194,6 +194,36 @@ if new_final not in cipher_source:
         raise SystemExit("Unexpected mbedTLS cipher finish block; refusing diagnostic patch")
     cipher_source = cipher_source.replace(old_final, new_final, 1)
 
+# Record the exact packet dimensions at the existing DECRYPT_ERROR decision.
+# The HMAC gate above has already succeeded (or is not configured) at this point.
+decrypt_anchor = """            // decrypt from buf -> work
+            const size_t decrypt_bytes = cipher.decrypt(iv_buf, work.data(), work.max_size(), buf.c_data(), buf.size());
+            if (!decrypt_bytes)
+            {
+                buf.reset_size();
+                return Error::DECRYPT_ERROR;
+            }
+"""
+decrypt_replacement = """            // decrypt from buf -> work
+            const size_t diag_ciphertext_len = buf.size();
+            const size_t diag_iv_len = iv_length;
+            const size_t decrypt_bytes = cipher.decrypt(iv_buf, work.data(), work.max_size(), buf.c_data(), buf.size());
+            if (!decrypt_bytes)
+            {
+                OPENVPN_LOG("DIAG_CHM_FATAL: decrypt_bytes evaluated to ZERO"
+                            << " | original_packet_len=" << diag_original_packet_len
+                            << " | ciphertext_len=" << diag_ciphertext_len
+                            << " | iv_len=" << diag_iv_len
+                            << " | decrypt_bytes=" << decrypt_bytes);
+                buf.reset_size();
+                return Error::DECRYPT_ERROR;
+            }
+"""
+if decrypt_replacement not in hmac_source:
+    if decrypt_anchor not in hmac_source:
+        raise SystemExit("Unexpected decrypt_chm.hpp cipher-decrypt block; refusing fatal diagnostic patch")
+    hmac_source = hmac_source.replace(decrypt_anchor, decrypt_replacement, 1)
+
 hmac_path.write_text(hmac_source)
 cipher_path.write_text(cipher_source)
 print("Applied verified, bounded OpenVPN receive-path diagnostics.")
