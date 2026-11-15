@@ -89,25 +89,25 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         if (tun_builder_class_ == nullptr || clear_exception(env)) return;
 
         tun_builder_ctor_ = lookup_method(
-            tun_builder_class_, "<init>", "(Landroid/net/VpnService;)V");
+            env, tun_builder_class_, "<init>", "(Landroid/net/VpnService;)V");
         session_method_ = lookup_method(
-            tun_builder_class_, "setSessionName", "(Ljava/lang/String;)V");
+            env, tun_builder_class_, "setSessionName", "(Ljava/lang/String;)V");
         mtu_method_ = lookup_method(env, tun_builder_class_, "setMtu", "(I)V");
         address_method_ = lookup_method(
-            tun_builder_class_, "addAddress",
+            env, tun_builder_class_, "addAddress",
             "(Ljava/lang/String;ILjava/lang/String;ZZ)V");
         route_method_ = lookup_method(
-            tun_builder_class_, "addRoute", "(Ljava/lang/String;IZ)V");
+            env, tun_builder_class_, "addRoute", "(Ljava/lang/String;IZ)V");
         exclude_route_method_ = lookup_method(
-            tun_builder_class_, "excludeRoute", "(Ljava/lang/String;IZ)V");
+            env, tun_builder_class_, "excludeRoute", "(Ljava/lang/String;IZ)V");
         dns_method_ = lookup_method(
-            tun_builder_class_, "addDnsServer", "(Ljava/lang/String;)V");
+            env, tun_builder_class_, "addDnsServer", "(Ljava/lang/String;)V");
         search_domain_method_ = lookup_method(
-            tun_builder_class_, "addSearchDomain", "(Ljava/lang/String;)V");
+            env, tun_builder_class_, "addSearchDomain", "(Ljava/lang/String;)V");
         allow_family_method_ = lookup_method(
-            tun_builder_class_, "setAllowFamily", "(IZ)V");
-        establish_method_ = lookup_method(tun_builder_class_, "establish", "()I");
-        close_method_ = lookup_method(tun_builder_class_, "close", "()V");
+            env, tun_builder_class_, "setAllowFamily", "(IZ)V");
+        establish_method_ = lookup_method(env, tun_builder_class_, "establish", "()I");
+        close_method_ = lookup_method(env, tun_builder_class_, "close", "()V");
     }
 
     ~AndroidOpenVPNClient() override {
