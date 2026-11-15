@@ -253,7 +253,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
                 return false;
             }
         }
-        if (ipv6 && !call_string_int(route_method_, "::", 0)) return false;
+        if (ipv6 && !call_string_int_bool(route_method_, "::", 0, true)) return false;
         return true;
     }
 
