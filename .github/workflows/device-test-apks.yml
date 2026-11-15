@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - "device-test/**"
+      - "feature/**"
 
 permissions:
   contents: read
@@ -38,10 +39,10 @@ jobs:
 
       - name: Install Android build dependencies
         run: |
-          sdkmanager --install \\
-            "platforms;android-35" \\
-            "build-tools;35.0.0" \\
-            "ndk;27.2.12479018" \\
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
       - name: Install host pkg-config
@@ -57,9 +58,9 @@ jobs:
 
       - name: Test and package debug and release APKs
         run: |
-          gradle --no-daemon \\
-            :app:testDebugUnitTest \\
-            :app:assembleDebug \\
+          gradle --no-daemon \
+            :app:testDebugUnitTest \
+            :app:assembleDebug \
             :app:assembleRelease
 
       - name: Verify APK contents and debug signature
