@@ -110,15 +110,19 @@ class VpnGateRepository(context: Context? = null) {
         val configured = sources().filter { it.enabled }
         val builtIn = VpnSource("vpngate-default", "VPN Gate", VpnSourceKind.VPN_GATE_CSV, "https://www.vpngate.net/api/iphone/")
         val allSources = listOf(builtIn) + configured
-        allSources.flatMap { source ->
+        deduplicateServers(allSources.flatMap { source ->
             runCatching {
                 when (source.kind) {
                     VpnSourceKind.OPENVPN_PROFILE -> listOf(profileServer(source))
                     VpnSourceKind.VPN_GATE_CSV -> fetchCsv(source)
                 }
             }.getOrDefault(emptyList())
-        }.distinctBy { "${it.sourceId}:${it.ip}:${it.hostName}" }
+        })
     }
+
+    /** Keep the first provider's metadata while removing the same relay repeated by other sources. */
+    internal fun deduplicateServers(servers: List<VpnGateServer>): List<VpnGateServer> =
+        servers.distinctBy { "${it.ip.trim().lowercase()}:${it.hostName.trim().lowercase()}" }
 
     private fun fetchCsv(source: VpnSource): List<VpnGateServer> {
         val request = Request.Builder().url(source.location)
