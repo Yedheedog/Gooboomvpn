@@ -490,6 +490,7 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         return make_java_string(env, "Missing VPN service or OpenVPN profile.");
     }
 
+    try {
     const jsize length = env->GetArrayLength(profile_bytes);
     if (length <= 0) return make_java_string(env, "The OpenVPN profile is empty.");
     const long max_profile_size = openvpn::ClientAPI::max_profile_size();
@@ -595,6 +596,11 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         }
     }
     return nullptr;
+    } catch (const std::exception &e) {
+        return make_java_string(env, std::string("Could not initialize OpenVPN: ") + e.what());
+    } catch (...) {
+        return make_java_string(env, "Could not initialize OpenVPN due to an unknown native error.");
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL
