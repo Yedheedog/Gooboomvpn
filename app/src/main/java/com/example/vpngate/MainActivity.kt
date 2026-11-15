@@ -72,7 +72,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
     var message by remember { mutableStateOf("Load public relays to get started") }
     var sortMode by remember { mutableStateOf(RelaySelectionMode.LOWEST_PING) }
     var countryFilter by remember { mutableStateOf("ALL") }
-    val availableCountries = remember(servers) { servers.map { it.countryCode }.filter { it.isNotBlank() }.distinct().sorted() }
+    val availableCountries = remember(servers) { servers.map { it.countryCode }.filter { it.isNotBlank() && it != "--" }.distinct().sorted() }
     val visibleServers = remember(servers, sortMode, countryFilter) {
         ServerRanker.sort(servers, sortMode, if (countryFilter == "ALL") emptySet() else setOf(countryFilter)).take(100)
     }
@@ -106,6 +106,14 @@ private fun VpnGateApp(activity: ComponentActivity) {
         }.onFailure { sourceMessage = it.message ?: "Could not import profile" }
     }
 
+    LaunchedEffect(countryFilter, servers) {
+        if (servers.isNotEmpty()) {
+            val allowed = if (countryFilter == "ALL") emptySet() else setOf(countryFilter)
+            if (selected == null || (allowed.isNotEmpty() && selected?.countryCode !in allowed)) {
+                selected = ServerRanker.sort(servers, RelaySelectionMode.LOWEST_PING, allowed).firstOrNull()
+            }
+        }
+    }
     LaunchedEffect(Unit) { refresh() }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -193,6 +201,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
                         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("${server.country} (${server.countryCode})", fontWeight = FontWeight.SemiBold)
+                                Text(server.sourceName, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                                 Text("${server.ip}  •  ${server.sessions} sessions", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
                             }
                             Column(horizontalAlignment = Alignment.End) {
