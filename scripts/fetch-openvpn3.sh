@@ -36,4 +36,42 @@ echo "OpenVPN 3 source staged at:"
 echo "  $DEST"
 echo "  revision $ACTUAL"
 echo
+# The pinned Android build uses OpenVPN's mbedTLS backend. mbedtls_cipher_setup()
+# requires a context initialized by mbedtls_cipher_init(); upstream's wrapper
+# currently omits that initialization. Patch the fetched source reproducibly.
+python3 - "${DEST}/openvpn/mbedtls/crypto/cipher.hpp" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text()
+old_ctor = "    CipherContextCommon() = default;\n"
+new_ctor = """    CipherContextCommon()
+    {
+        mbedtls_cipher_init(&ctx);
+    }
+"""
+old_init = """        erase();
+
+        check_mode(mode);
+"""
+new_init = """        erase();
+
+        // mbedtls_cipher_free() clears a previously used context; initialize it
+        // again before setup, as required by the mbedTLS cipher API.
+        mbedtls_cipher_init(&ctx);
+        check_mode(mode);
+"""
+if old_ctor in source:
+    source = source.replace(old_ctor, new_ctor, 1)
+elif new_ctor not in source:
+    raise SystemExit("Unexpected OpenVPN mbedTLS cipher wrapper constructor; refusing to patch")
+if old_init in source:
+    source = source.replace(old_init, new_init, 1)
+elif new_init not in source:
+    raise SystemExit("Unexpected OpenVPN mbedTLS cipher init path; refusing to patch")
+path.write_text(source)
+print("Applied explicit mbedTLS cipher-context initialization patch.")
+PY
+
 echo "Pinned source fetch verified. The Android adapter still requires a successful native build and real-device connection test."
