@@ -77,6 +77,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         event_method_ = lookup_method(
             env, service_class, "onNativeEvent",
             "(Ljava/lang/String;Ljava/lang/String;ZZ)V");
+        log_method_ = lookup_method(env, service_class, "onNativeLog", "(Ljava/lang/String;)V");
         env->DeleteLocalRef(service_class);
 
         // Resolve the Kotlin helper while called from the app's Java thread. The
@@ -131,7 +132,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
 
     bool callbacks_ready() const {
         return service_ != nullptr && protect_method_ != nullptr &&
-               event_method_ != nullptr && tun_builder_class_ != nullptr &&
+               event_method_ != nullptr && log_method_ != nullptr && tun_builder_class_ != nullptr &&
                tun_builder_ctor_ != nullptr && session_method_ != nullptr &&
                mtu_method_ != nullptr && address_method_ != nullptr &&
                route_method_ != nullptr && exclude_route_method_ != nullptr &&
@@ -173,6 +174,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
 
         const std::string safe_record = info.text.substr(0, 3500);
         __android_log_write(ANDROID_LOG_INFO, "VPNGateOpenVPN", safe_record.c_str());
+        emit_log(safe_record);
     }
 
     void emit_status(const openvpn::ClientAPI::Status &status) {
@@ -410,6 +412,20 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         OpenVPNClient::connect_run();
     }
 
+    void emit_log(const std::string &message) {
+        ScopedJniEnv scoped(g_vm);
+        JNIEnv *env = scoped.get();
+        if (env == nullptr || service_ == nullptr || log_method_ == nullptr) return;
+        jstring jmessage = env->NewStringUTF(message.c_str());
+        if (clear_exception(env) || jmessage == nullptr) {
+            if (jmessage != nullptr) env->DeleteLocalRef(jmessage);
+            return;
+        }
+        env->CallVoidMethod(service_, log_method_, jmessage);
+        env->DeleteLocalRef(jmessage);
+        clear_exception(env);
+    }
+
     void emit_event(const std::string &name, const std::string &info,
                     bool error, bool fatal) {
         ScopedJniEnv scoped(g_vm);
@@ -514,6 +530,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     jobject service_ = nullptr;
     jmethodID protect_method_ = nullptr;
     jmethodID event_method_ = nullptr;
+    jmethodID log_method_ = nullptr;
     jclass tun_builder_class_ = nullptr;
     jobject tun_builder_ = nullptr;
     jmethodID tun_builder_ctor_ = nullptr;
