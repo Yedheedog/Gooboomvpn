@@ -74,4 +74,148 @@ path.write_text(source)
 print("Applied explicit mbedTLS cipher-context initialization patch.")
 PY
 
+# Instrument the exact CBC/HMAC receive path without exposing secrets. The
+# counters bound normal diagnostic output; failures are always emitted.
+python3 - "${DEST}/openvpn/mbedtls/crypto/cipher.hpp" "${DEST}/openvpn/crypto/decrypt_chm.hpp" <<'PY'
+from pathlib import Path
+import sys
+
+cipher_path = Path(sys.argv[1])
+decrypt_path = Path(sys.argv[2])
+cipher = cipher_path.read_text()
+decrypt = decrypt_path.read_text()
+marker = "VPNGATE_DIAG"
+
+def patch_file(path, source, replacements):
+    if marker in source:
+        if not all(new_marker in source for _, _, new_marker in replacements):
+            raise SystemExit(f"Partial diagnostic patch detected in {path}; refusing to continue")
+        print(f"Diagnostic instrumentation already present in {path}")
+        return source
+    for old, new, label in replacements:
+        count = source.count(old)
+        if count != 1:
+            raise SystemExit(f"Expected exactly one anchor for {label} in {path}; found {count}")
+        source = source.replace(old, new, 1)
+    path.write_text(source)
+    print(f"Applied diagnostic instrumentation to {path}")
+    return source
+
+cipher_replacements = [
+(
+    '#include <string>\n\n#include <mbedtls/cipher.h>\n',
+    '#include <string>\n#include <atomic>\n\n#include <mbedtls/cipher.h>\n#include <openvpn/log/logbase.hpp>\n',
+    '#include <openvpn/log/logbase.hpp>'
+),
+(
+    '    bool initialized = false;\n    mbedtls_cipher_context_t ctx;\n',
+    '    bool initialized = false;\n    const char *diagnostic_cipher_name = "unknown";\n    mbedtls_cipher_context_t ctx;\n',
+    'diagnostic_cipher_name'
+),
+(
+    '        erase();\n\n        check_mode(mode);\n',
+    '        erase();\n        diagnostic_cipher_name = CryptoAlgs::name(alg);\n\n        check_mode(mode);\n',
+    'cipher name capture'
+),
+(
+    '''        size_t outlen;
+        if (mbedtls_cipher_update(&ctx, in, in_size, out, &outlen) >= 0)
+        {
+            out_acc += outlen;
+            return true;
+        }
+        else
+            return false;
+''',
+    '''        size_t outlen = 0;
+        const int ret = mbedtls_cipher_update(&ctx, in, in_size, out, &outlen);
+        static std::atomic<unsigned int> trace_count{0};
+        const unsigned int trace_index = trace_count.fetch_add(1, std::memory_order_relaxed);
+        if (trace_index < 16 || ret < 0)
+            OPENVPN_LOG("VPNGATE_DIAG mbedtls_cipher_update algorithm=" << diagnostic_cipher_name
+                        << " input_len=" << in_size << " return=" << ret << " output_len=" << outlen);
+        if (ret >= 0)
+        {
+            out_acc += outlen;
+            return true;
+        }
+        else
+            return false;
+''',
+    'mbedtls_cipher_update trace'
+),
+(
+    '''        size_t outlen;
+        if (mbedtls_cipher_finish(&ctx, out, &outlen) >= 0)
+        {
+            out_acc += outlen;
+            return true;
+        }
+        else
+            return false;
+''',
+    '''        size_t outlen = 0;
+        const int ret = mbedtls_cipher_finish(&ctx, out, &outlen);
+        static std::atomic<unsigned int> trace_count{0};
+        const unsigned int trace_index = trace_count.fetch_add(1, std::memory_order_relaxed);
+        if (trace_index < 16 || ret < 0)
+            OPENVPN_LOG("VPNGATE_DIAG mbedtls_cipher_finish algorithm=" << diagnostic_cipher_name
+                        << " return=" << ret << " output_len=" << outlen);
+        if (ret >= 0)
+        {
+            out_acc += outlen;
+            return true;
+        }
+        else
+            return false;
+''',
+    'mbedtls_cipher_finish trace'
+)
+]
+decrypt_replacements = [
+(
+    '#include <cstring>\n',
+    '#include <cstring>\n#include <atomic>\n\n#include <openvpn/log/logbase.hpp>\n',
+    '#include <openvpn/log/logbase.hpp>'
+),
+(
+    '''            hmac.hmac(local_hmac, hmac_size, buf.c_data(), buf.size());
+            if (crypto::memneq(local_hmac, packet_hmac, hmac_size))
+            {
+                buf.reset_size();
+                return Error::HMAC_ERROR;
+            }
+        }
+
+        // decrypt packet ID + payload
+''',
+    '''            hmac.hmac(local_hmac, hmac_size, buf.c_data(), buf.size());
+            const bool hmac_failed = crypto::memneq(local_hmac, packet_hmac, hmac_size) != 0;
+            static std::atomic<unsigned int> hmac_trace_count{0};
+            const unsigned int hmac_trace_index = hmac_trace_count.fetch_add(1, std::memory_order_relaxed);
+            if (hmac_trace_index < 16 || hmac_failed)
+                OPENVPN_LOG("VPNGATE_DIAG HMAC status=" << (hmac_failed ? "FAILURE" : "SUCCESS")
+                            << " tag_len=" << hmac_size << " authenticated_len=" << buf.size());
+            if (hmac_failed)
+            {
+                buf.reset_size();
+                return Error::HMAC_ERROR;
+            }
+        }
+        else
+        {
+            static std::atomic<unsigned int> hmac_skip_trace_count{0};
+            if (hmac_skip_trace_count.fetch_add(1, std::memory_order_relaxed) < 16)
+                OPENVPN_LOG("VPNGATE_DIAG HMAC status=SKIPPED");
+        }
+
+        // decrypt packet ID + payload
+''',
+    'HMAC verification trace'
+)
+]
+cipher = patch_file(cipher_path, cipher, cipher_replacements)
+decrypt = patch_file(decrypt_path, decrypt, decrypt_replacements)
+PY
+
 echo "Pinned source fetch verified. The Android adapter still requires a successful native build and real-device connection test."
