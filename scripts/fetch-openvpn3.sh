@@ -74,4 +74,37 @@ path.write_text(source)
 print("Applied explicit mbedTLS cipher-context initialization patch.")
 PY
 
+# Configure the padding callbacks required by mbedTLS 3.x for OpenVPN CBC.
+# OpenVPN's data-channel CBC framing uses PKCS#7 padding; mbedTLS 3.x does not
+# select a padding handler automatically after mbedtls_cipher_setup().
+python3 - "${DEST}/openvpn/mbedtls/crypto/cipher.hpp" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text()
+old = """        if (mbedtls_cipher_setup(&ctx, ci) < 0)
+            throw mbedtls_cipher_error("mbedtls_cipher_setup");
+"""
+new = """        if (mbedtls_cipher_setup(&ctx, ci) < 0)
+            throw mbedtls_cipher_error("mbedtls_cipher_setup");
+
+#if defined(MBEDTLS_CIPHER_MODE_WITH_PADDING)
+        // Configure PKCS#7 only for CBC. AES-CTR is also supported by this
+        // backend and must retain its unpadded stream-style behavior.
+        if (mbedtls_cipher_get_cipher_mode(&ctx) == MBEDTLS_MODE_CBC &&
+            mbedtls_cipher_set_padding_mode(&ctx, MBEDTLS_PADDING_PKCS7) < 0)
+            throw mbedtls_cipher_error("mbedtls_cipher_set_padding_mode(PKCS7)");
+#endif
+"""
+if new not in source:
+    if old not in source:
+        raise SystemExit("Unexpected OpenVPN mbedTLS setup block; refusing padding patch")
+    source = source.replace(old, new, 1)
+    path.write_text(source)
+    print("Applied CBC-only PKCS#7 padding configuration.")
+else:
+    print("CBC-only PKCS#7 padding configuration already present.")
+PY
+
 echo "Pinned source fetch verified. The Android adapter still requires a successful native build and real-device connection test."
