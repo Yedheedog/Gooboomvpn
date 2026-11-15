@@ -56,36 +56,30 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Test and package debug plus release APKs
+      - name: Test and package debug APK only
         run: |
           gradle --no-daemon \
             :app:testDebugUnitTest \
-            :app:assembleDebug \
-            :app:assembleRelease
+            :app:assembleDebug
 
-      - name: Verify APK contents and signatures
+      - name: Verify debug APK contents and signature
         shell: bash
         run: |
           set -euo pipefail
           DEBUG_APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
-          RELEASE_APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -s "$DEBUG_APK"
-          test -s "$RELEASE_APK"
 
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
 
-          for apk in "$DEBUG_APK" "$RELEASE_APK"; do
-            "$AAPT" dump badging "$apk" | grep -F "package: name='com.example.vpngate'"
-            for abi in arm64-v8a x86_64; do
-              unzip -Z1 "$apk" | grep -Fx "lib/$abi/libopenvpn3_jni.so" >/dev/null
-            done
+          "$AAPT" dump badging "$DEBUG_APK" | grep -F "package: name='com.example.vpngate'"
+          for abi in arm64-v8a x86_64; do
+            unzip -Z1 "$DEBUG_APK" | grep -Fx "lib/$abi/libopenvpn3_jni.so" >/dev/null
           done
 
           "$APKSIGNER" verify --verbose "$DEBUG_APK"
           echo "Debug APK: $DEBUG_APK (debug-key signed)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Release APK: $RELEASE_APK (unsigned; no release signing key is used)" >> "$GITHUB_STEP_SUMMARY"
-          sha256sum "$DEBUG_APK" "$RELEASE_APK"
+          sha256sum "$DEBUG_APK"
 
       - name: Upload device-test APKs
         uses: actions/upload-artifact@v4
@@ -93,6 +87,5 @@ jobs:
           name: vpn-gate-connect-device-test-apks
           path: |
             app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
