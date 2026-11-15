@@ -4,7 +4,9 @@ Android-only VPN Gate client using public volunteer VPN Gate relays and OpenVPN 
 
 ## Project status
 
-This repository is under active development. The OpenVPN 3 native core, JNI adapter, Android TUN builder bridge, and service lifecycle are being integrated. A successful CI compile is not proof of a working VPN tunnel; real-device connection, traffic, DNS, and leak testing are still required before calling it functional.
+The pinned OpenVPN 3 core is now compiled and linked into the Android JNI library for `arm64-v8a` and `x86_64`. The repository includes a real `ClientAPI::OpenVPNClient` subclass, JNI callbacks, an Android `VpnService.Builder` bridge, protected transport sockets, detached TUN descriptor handoff, and a serialized connect/stop lifecycle. OpenVPN core owns packet I/O through the handed-off TUN descriptor.
+
+CI runs relay-discovery unit tests and compiles Kotlin plus the native library for both configured ABIs without packaging APKs. This is source/build verification only: the app has **not yet been verified on a physical Android device**, so a successful compile must not be treated as proof of a working VPN tunnel. Real relay handshake, traffic, DNS, IPv4/IPv6 leak, disconnect, and revoke testing are still required.
 
 ## Planned architecture
 
