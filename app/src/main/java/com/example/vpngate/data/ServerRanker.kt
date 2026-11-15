@@ -67,7 +67,7 @@ object ServerRanker {
             server.pingMs >= 0 &&
             server.pingMs < Long.MAX_VALUE &&
             server.uptime >= 0 &&
-            server.sessions >= 0)
+            server.sessions >= 0))
 
     private fun balancedScore(pingMs: Long, speedBps: Long): Double {
         // Normalize each metric to a practical range before combining them.
