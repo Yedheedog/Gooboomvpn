@@ -11,7 +11,8 @@ data class VpnUiState(
     val serverLabel: String? = null,
     val message: String = "Choose a VPN Gate relay to connect",
     val uploadedBytes: Long = 0L,
-    val downloadedBytes: Long = 0L
+    val downloadedBytes: Long = 0L,
+    val sessionDurationSeconds: Long = 0L
 )
 
 /** In-process state channel shared by the foreground service and Compose UI. */
