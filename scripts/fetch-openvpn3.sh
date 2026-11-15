@@ -75,6 +75,7 @@ print("Applied explicit mbedTLS cipher-context initialization patch.")
 PY
 
 # Configure the padding callbacks required by mbedTLS 3.x for OpenVPN CBC.
+# Keep this patch in the device-test branch so CI packages the exact tested source.
 # OpenVPN's data-channel CBC framing uses PKCS#7 padding; mbedTLS 3.x does not
 # select a padding handler automatically after mbedtls_cipher_setup().
 python3 - "${DEST}/openvpn/mbedtls/crypto/cipher.hpp" <<'PY'
