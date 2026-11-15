@@ -80,17 +80,23 @@ internal class AndroidTunBuilder(
         addAddress(address, prefixLength)
     }
 
-    fun addRoute(address: String, prefixLength: Int) = mutate {
+    fun addRoute(address: String, prefixLength: Int, ipv6: Boolean) = mutate {
         val parsedAddress = parseNumericAddress(address)
-        require(prefixLength in 0..(if (parsedAddress.address.size == 16) 128 else 32)) {
+        require((parsedAddress.address.size == 16) == ipv6) {
+            "OpenVPN route address-family metadata does not match the route address."
+        }
+        require(prefixLength in 0..(if (ipv6) 128 else 32)) {
             "Invalid route prefix length."
         }
         addRoute(address, prefixLength)
     }
 
-    fun excludeRoute(address: String, prefixLength: Int) = mutate {
+    fun excludeRoute(address: String, prefixLength: Int, ipv6: Boolean) = mutate {
         val parsedAddress = parseNumericAddress(address)
-        require(prefixLength in 0..(if (parsedAddress.address.size == 16) 128 else 32)) {
+        require((parsedAddress.address.size == 16) == ipv6) {
+            "OpenVPN excluded-route address-family metadata does not match the route address."
+        }
+        require(prefixLength in 0..(if (ipv6) 128 else 32)) {
             "Invalid excluded-route prefix length."
         }
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
