@@ -240,7 +240,18 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
             RG_ENABLE | RG_REROUTE_GW | RG_LOCAL | RG_AUTO_LOCAL | RG_DEF1 |
             RG_BYPASS_DHCP | RG_BYPASS_DNS | RG_BLOCK_LOCAL | RG_IPv4 | RG_IPv6;
         if ((flags & unsupported_flags) != 0 || (flags & ~known_flags) != 0) return false;
-        if (ipv4 && !call_string_int(route_method_, "0.0.0.0", 0)) return false;
+        if (ipv4) {
+            // OpenVPN's "def1" mode deliberately preserves the existing default
+            // route and installs two more-specific IPv4 halves instead. A single
+            // /0 route is not equivalent when the Android device already has
+            // routing state that should remain the fallback.
+            if ((flags & RG_DEF1) != 0) {
+                if (!call_string_int(route_method_, "0.0.0.0", 1)) return false;
+                if (!call_string_int(route_method_, "128.0.0.0", 1)) return false;
+            } else if (!call_string_int(route_method_, "0.0.0.0", 0)) {
+                return false;
+            }
+        }
         if (ipv6 && !call_string_int(route_method_, "::", 0)) return false;
         return true;
     }
