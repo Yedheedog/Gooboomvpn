@@ -65,6 +65,12 @@ private fun VpnGateApp(activity: ComponentActivity) {
     var selected by remember { mutableStateOf<VpnGateServer?>(null) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Load public relays to get started") }
+    var sortMode by remember { mutableStateOf(RelaySelectionMode.LOWEST_PING) }
+    var countryFilter by remember { mutableStateOf("ALL") }
+    val availableCountries = remember(servers) { servers.map { it.countryCode }.filter { it.isNotBlank() }.distinct().sorted() }
+    val visibleServers = remember(servers, sortMode, countryFilter) {
+        ServerRanker.sort(servers, sortMode, if (countryFilter == "ALL") emptySet() else setOf(countryFilter)).take(100)
+    }
 
     fun refresh() {
         scope.launch {
@@ -91,6 +97,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
                     Text("VPN GATE", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                     Text("OPENVPN RELAY CLIENT", style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
                 }
+                IconButton(onClick = { /* Source manager will be wired in the source-management change. */ }, enabled = true) { Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) }
                 IconButton(onClick = { refresh() }, enabled = !loading) { Icon(Icons.Default.Refresh, "Refresh") }
             }
             Spacer(Modifier.height(28.dp))
@@ -140,9 +147,28 @@ private fun VpnGateApp(activity: ComponentActivity) {
             }
             Spacer(Modifier.height(8.dp))
             Text(message, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                FilterChip(selected = sortMode == RelaySelectionMode.LOWEST_PING, onClick = { sortMode = RelaySelectionMode.LOWEST_PING }, label = { Text("Lowest ping") })
+                FilterChip(selected = sortMode == RelaySelectionMode.HIGHEST_SPEED, onClick = { sortMode = RelaySelectionMode.HIGHEST_SPEED }, label = { Text("Highest speed") })
+                FilterChip(selected = sortMode == RelaySelectionMode.BALANCED, onClick = { sortMode = RelaySelectionMode.BALANCED }, label = { Text("Balanced") })
+            }
+            if (availableCountries.isNotEmpty()) {
+                var expanded by remember { mutableStateOf(false) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Country", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                    Box {
+                        TextButton(onClick = { expanded = true }) { Text(if (countryFilter == "ALL") "All countries" else countryFilter) }
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            DropdownMenuItem(text = { Text("All countries") }, onClick = { countryFilter = "ALL"; expanded = false })
+                            availableCountries.forEach { code -> DropdownMenuItem(text = { Text(code) }, onClick = { countryFilter = code; expanded = false }) }
+                        }
+                    }
+                    Text("${visibleServers.size} shown", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                }
+            }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-                items(servers.take(100)) { server ->
+                items(visibleServers) { server ->
                     Card(onClick = { selected = server }, colors = CardDefaults.cardColors(containerColor = if (selected == server) Color(0xFF1C3A3A) else MaterialTheme.colorScheme.surface)) {
                         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
