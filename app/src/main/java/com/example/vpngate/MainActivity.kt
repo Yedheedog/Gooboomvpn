@@ -158,7 +158,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
                     Spacer(Modifier.height(6.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(vpnState.serverLabel ?: selected?.country ?: "Automatic server", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(vpnState.serverLabel ?: selected?.country ?: "Automatic server", color = if (vpnState.phase == VpnPhase.CONNECTED) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(selected?.let { "${it.pingMs} ms  •  ${it.displaySpeed}" } ?: "Fastest available relay", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
                             if (vpnState.phase == VpnPhase.CONNECTED) {
                                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
