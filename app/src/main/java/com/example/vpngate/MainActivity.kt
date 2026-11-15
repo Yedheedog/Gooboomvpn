@@ -74,7 +74,9 @@ private fun VpnGateApp(activity: ComponentActivity) {
     var countryFilter by remember { mutableStateOf("ALL") }
     val availableCountries = remember(servers) { servers.map { it.countryCode }.filter { it.isNotBlank() && it != "--" }.distinct().sorted() }
     val visibleServers = remember(servers, sortMode, countryFilter) {
-        ServerRanker.sort(servers, sortMode, if (countryFilter == "ALL") emptySet() else setOf(countryFilter)).take(100)
+        // LazyColumn virtualizes rows, so retain imported profiles even when a source
+        // returns more than 100 public relays.
+        ServerRanker.sort(servers, sortMode, if (countryFilter == "ALL") emptySet() else setOf(countryFilter))
     }
 
     fun refresh() {
