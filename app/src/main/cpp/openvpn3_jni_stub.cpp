@@ -157,18 +157,21 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     void log(const openvpn::ClientAPI::LogInfo &info) override {
         if (info.text.empty()) return;
 
-        // Keep native diagnostics local to Android logcat. Suppress records that
+        // Keep diagnostics in logcat and the in-app buffer. Suppress records that
         // could contain authentication material or inline key/certificate data.
         std::string lowered = info.text;
         std::transform(lowered.begin(), lowered.end(), lowered.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (lowered.find("password") != std::string::npos ||
+            lowered.find("username") != std::string::npos ||
+            lowered.find("auth-user-pass") != std::string::npos ||
             lowered.find("auth-token") != std::string::npos ||
             lowered.find("auth_token") != std::string::npos ||
             lowered.find("private key") != std::string::npos ||
             lowered.find("-----begin") != std::string::npos) {
-            __android_log_write(ANDROID_LOG_WARN, "VPNGateOpenVPN",
-                                "[redacted sensitive OpenVPN log record]");
+            constexpr char redacted[] = "[redacted sensitive OpenVPN log record]";
+            __android_log_write(ANDROID_LOG_WARN, "VPNGateOpenVPN", redacted);
+            emit_log(redacted);
             return;
         }
 
