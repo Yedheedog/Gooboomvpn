@@ -9,6 +9,7 @@
 #include <atomic>
 #include <exception>
 #include <algorithm>
+#include <cctype>
 #include <sys/socket.h>
 
 #include "ovpncli.hpp"
