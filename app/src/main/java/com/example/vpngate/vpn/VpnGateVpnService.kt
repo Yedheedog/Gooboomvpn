@@ -23,6 +23,7 @@ class VpnGateVpnService : VpnService() {
         const val EXTRA_PROFILE = "inline_profile_bytes"
         const val EXTRA_SERVER = "server_label"
         const val EXTRA_SERVER_IP = "server_ip"
+        const val EXTRA_ALLOWED_COUNTRY = "allowed_country_code"
         private const val CHANNEL_ID = "vpn_connection"
         private const val NOTIFICATION_ID = 4101
     }
@@ -126,6 +127,7 @@ class VpnGateVpnService : VpnService() {
         attemptedServerIps.clear()
         automaticFailoverAttempts = 0
         activeServerIp = intent.getStringExtra(EXTRA_SERVER_IP)
+        activeCountryFilter = intent.getStringExtra(EXTRA_ALLOWED_COUNTRY)?.takeIf { it.isNotBlank() }?.let { setOf(it) } ?: emptySet()
         activeServerLabel = intent.getStringExtra(EXTRA_SERVER) ?: "VPN Gate relay"
         activeServerIp?.let { attemptedServerIps.add(it) }
         val server = activeServerLabel ?: "VPN Gate relay"
@@ -163,6 +165,7 @@ class VpnGateVpnService : VpnService() {
     private var userRequestedDisconnect = false
     private var activeServerIp: String? = null
     private var activeServerLabel: String? = null
+    private var activeCountryFilter: Set<String> = emptySet()
     private var automaticFailoverAttempts = 0
     private val attemptedServerIps = linkedSetOf<String>()
 
@@ -196,7 +199,8 @@ class VpnGateVpnService : VpnService() {
                 next = ServerRanker.nextFailoverCandidate(
                     candidates,
                     currentServerIp = activeServerIp,
-                    attemptedServerIps = attemptedServerIps
+                    attemptedServerIps = attemptedServerIps,
+                    allowedCountryCodes = activeCountryFilter
                 )
                 if (next == null) {
                     failure = "No untried compatible relay is available."
