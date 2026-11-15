@@ -74,8 +74,6 @@ private fun VpnGateApp(activity: ComponentActivity) {
     var countryFilter by remember { mutableStateOf("ALL") }
     val availableCountries = remember(servers) { servers.map { it.countryCode }.filter { it.isNotBlank() && it != "--" }.distinct().sorted() }
     val visibleServers = remember(servers, sortMode, countryFilter) {
-        // LazyColumn virtualizes rows, so retain imported profiles even when a source
-        // returns more than 100 public relays.
         ServerRanker.sort(servers, sortMode, if (countryFilter == "ALL") emptySet() else setOf(countryFilter))
     }
 
@@ -86,7 +84,6 @@ private fun VpnGateApp(activity: ComponentActivity) {
                 .onSuccess { list ->
                     val previouslySelectedIp = selected?.ip
                     servers = list
-                    // Refreshing sources should not silently discard the user's manual relay choice.
                     selected = list.firstOrNull { it.ip == previouslySelectedIp }
                         ?: ServerRanker.fastest(list)
                     val sourceWarnings = repository.lastFetchWarnings
@@ -130,7 +127,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
     LaunchedEffect(Unit) { refresh() }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.fillMaxSize().padding(20.dp)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
                 Spacer(Modifier.width(10.dp))
@@ -141,18 +138,30 @@ private fun VpnGateApp(activity: ComponentActivity) {
                 IconButton(onClick = { sourceItems = repository.sources(); showSourceDialog = true }, enabled = true) { Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) }
                 IconButton(onClick = { refresh() }, enabled = !loading) { Icon(Icons.Default.Refresh, "Refresh") }
             }
-            Spacer(Modifier.height(28.dp))
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(24.dp)) {
-                Column(Modifier.fillMaxWidth().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(vpnState.phase.name.replace("_", " "), color = if (vpnState.phase == VpnPhase.CONNECTED) MaterialTheme.colorScheme.primary else Color.LightGray, style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.height(12.dp))
-                    Box(Modifier.size(124.dp).background(Color(0xFF20364A), RoundedCornerShape(100)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(66.dp))
+            Spacer(Modifier.height(10.dp))
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(20.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(
+                        vpnState.phase.name.replace("_", " "),
+                        color = if (vpnState.phase == VpnPhase.CONNECTED) MaterialTheme.colorScheme.primary else Color.LightGray,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(58.dp).background(Color(0xFF20364A), RoundedCornerShape(50)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(34.dp))
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(vpnState.serverLabel ?: selected?.country ?: "Automatic server", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(selected?.let { "${it.pingMs} ms  •  ${it.displaySpeed}" } ?: "Fastest available relay", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                            Text(vpnState.message, color = if (vpnState.phase == VpnPhase.ERROR) Color(0xFFFF8A80) else Color(0xFFFFC46B), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                        }
                     }
-                    Spacer(Modifier.height(14.dp))
-                    Text(vpnState.serverLabel ?: selected?.country ?: "Automatic server", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(selected?.let { "${it.pingMs} ms  •  ${it.displaySpeed}" } ?: "Fastest available relay", color = Color.LightGray)
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(10.dp))
                     Button(onClick = {
                         if (vpnState.phase == VpnPhase.CONNECTED || vpnState.phase == VpnPhase.STARTING) {
                             engine.disconnect()
@@ -174,20 +183,18 @@ private fun VpnGateApp(activity: ComponentActivity) {
                                     .onFailure { VpnConnectionState.update(com.example.vpngate.vpn.VpnUiState(VpnPhase.ERROR, server.country, it.message ?: "Invalid VPN profile")) }
                             }
                         }
-                    }, modifier = Modifier.fillMaxWidth().height(52.dp), enabled = !loading && (selected != null || vpnState.phase == VpnPhase.CONNECTED || vpnState.phase == VpnPhase.STARTING)) {
+                    }, modifier = Modifier.fillMaxWidth().height(44.dp), enabled = !loading && (selected != null || vpnState.phase == VpnPhase.CONNECTED || vpnState.phase == VpnPhase.STARTING)) {
                         Text(if (vpnState.phase == VpnPhase.CONNECTED || vpnState.phase == VpnPhase.STARTING) "DISCONNECT" else "CONNECT TO SELECTED")
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(vpnState.message, color = if (vpnState.phase == VpnPhase.ERROR) Color(0xFFFF8A80) else Color(0xFFFFC46B), style = MaterialTheme.typography.labelSmall)
                 }
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("AVAILABLE SERVERS", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Text("${servers.size} found", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
             }
-            Spacer(Modifier.height(8.dp))
-            Text(message, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(6.dp))
+            Text(message, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 2)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                 FilterChip(selected = sortMode == RelaySelectionMode.LOWEST_PING, onClick = { sortMode = RelaySelectionMode.LOWEST_PING }, label = { Text("Lowest ping") })
                 FilterChip(selected = sortMode == RelaySelectionMode.HIGHEST_SPEED, onClick = { sortMode = RelaySelectionMode.HIGHEST_SPEED }, label = { Text("Highest speed") })
@@ -227,11 +234,11 @@ private fun VpnGateApp(activity: ComponentActivity) {
             }
             if (servers.isEmpty() && !loading) OutlinedButton(onClick = { refresh() }, modifier = Modifier.fillMaxWidth()) { Text("LOAD SERVERS") }
             Text("VPN Gate relays are volunteer-operated. Avoid sensitive traffic on public relays.", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { showLogDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(onClick = { showLogDialog = true }, modifier = Modifier.fillMaxWidth().height(42.dp)) {
                 Text("VIEW / COPY DIAGNOSTIC LOG")
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
             Text("VPN Gate Connect — Build #${BuildConfig.BUILD_NUMBER}", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
     }
@@ -292,5 +299,4 @@ private fun VpnGateApp(activity: ComponentActivity) {
             }
         )
     }
-
 }
