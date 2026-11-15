@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Reproducibly fetch the upstream OpenVPN 3 client core.
-# This stages the source only; the Android JNI/TunBuilder adapter is a separate
-# integration step and the app remains fail-closed until that adapter is built.
+# Reproducibly fetch the upstream OpenVPN 3 client core used by the Android JNI
+# adapter. Fetching source alone is not evidence of a working VPN connection.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="${ROOT}/app/src/main/cpp/third_party/openvpn3"
 REV="0c1ce172fe918b05463d71e682a0c2f2d8fe7899"
@@ -37,4 +36,4 @@ echo "OpenVPN 3 source staged at:"
 echo "  $DEST"
 echo "  revision $ACTUAL"
 echo
-echo "Source fetch verified. This does NOT mean the Android core is linked or a VPN tunnel works yet."
+echo "Pinned source fetch verified. The Android adapter still requires a successful native build and real-device connection test."
