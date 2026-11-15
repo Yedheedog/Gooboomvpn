@@ -503,7 +503,7 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
 
     const openvpn::ClientAPI::EvalConfig evaluated = client->eval_config(config);
     // The config copy can contain inline certificates and private-key material.
-    std::fill(config.content.begin(), config.content.end(), '\\0');
+    std::fill(config.content.begin(), config.content.end(), '\0');
     if (evaluated.error) {
         return make_java_string(env, evaluated.message.empty()
             ? "OpenVPN rejected the selected profile." : evaluated.message);
@@ -523,8 +523,8 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         credentials.password = "vpn";
         const openvpn::ClientAPI::Status credential_status =
             client->provide_creds(credentials);
-        std::fill(credentials.username.begin(), credentials.username.end(), '\\0');
-        std::fill(credentials.password.begin(), credentials.password.end(), '\\0');
+        std::fill(credentials.username.begin(), credentials.username.end(), '\0');
+        std::fill(credentials.password.begin(), credentials.password.end(), '\0');
         if (credential_status.error) {
             return make_java_string(env, credential_status.message.empty()
                 ? "OpenVPN rejected the VPN Gate relay credentials."
