@@ -46,6 +46,10 @@ class VpnGateVpnService : VpnService() {
     }
 
     private fun handleNativeEvent(name: String, info: String, error: Boolean, fatal: Boolean) {
+        // An explicit disconnect owns the state transition until nativeStop() has
+        // joined the OpenVPN worker. Ignore late CONNECTED/terminal events meanwhile.
+        if (nativeStopInProgress) return
+
         when {
             name == "CONNECTED" -> {
                 VpnConnectionState.update(VpnUiState(VpnPhase.CONNECTED, message = "VPN tunnel connected"))
@@ -95,6 +99,15 @@ class VpnGateVpnService : VpnService() {
     }
 
     private fun startVpn(intent: Intent, startId: Int) {
+        // Do not race a new session against the previous session's native teardown.
+        // The user can retry once the disconnect completion callback has run.
+        if (nativeStopInProgress) {
+            VpnConnectionState.update(
+                VpnUiState(VpnPhase.DISCONNECTING, message = "Finishing previous disconnect…")
+            )
+            return
+        }
+
         val server = intent.getStringExtra(EXTRA_SERVER) ?: "VPN Gate relay"
         val profile = intent.getByteArrayExtra(EXTRA_PROFILE)
         VpnConnectionState.update(VpnUiState(VpnPhase.STARTING, server, "Preparing secure connection…"))
