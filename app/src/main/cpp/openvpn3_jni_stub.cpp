@@ -6,6 +6,7 @@
 #include <mutex>
 #include <thread>
 #include <atomic>
+#include <exception>
 #include <algorithm>
 #include <sys/socket.h>
 
@@ -501,6 +502,8 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
     std::fill(content.begin(), content.end(), '\0');
 
     const openvpn::ClientAPI::EvalConfig evaluated = client->eval_config(config);
+    // The config copy can contain inline certificates and private-key material.
+    std::fill(config.content.begin(), config.content.end(), '\\0');
     if (evaluated.error) {
         return make_java_string(env, evaluated.message.empty()
             ? "OpenVPN rejected the selected profile." : evaluated.message);
@@ -520,6 +523,8 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         credentials.password = "vpn";
         const openvpn::ClientAPI::Status credential_status =
             client->provide_creds(credentials);
+        std::fill(credentials.username.begin(), credentials.username.end(), '\\0');
+        std::fill(credentials.password.begin(), credentials.password.end(), '\\0');
         if (credential_status.error) {
             return make_java_string(env, credential_status.message.empty()
                 ? "OpenVPN rejected the VPN Gate relay credentials."
@@ -547,8 +552,20 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         g_connect_running.store(true);
         try {
             g_connect_worker = std::thread([client]() {
-                const openvpn::ClientAPI::Status status = client->connect();
-                client->emit_status(status);
+                try {
+                    const openvpn::ClientAPI::Status status = client->connect();
+                    client->emit_status(status);
+                } catch (const std::exception &e) {
+                    openvpn::ClientAPI::Status failure;
+                    failure.error = true;
+                    failure.message = std::string("OpenVPN worker exception: ") + e.what();
+                    client->emit_status(failure);
+                } catch (...) {
+                    openvpn::ClientAPI::Status failure;
+                    failure.error = true;
+                    failure.message = "OpenVPN worker failed with an unknown native exception.";
+                    client->emit_status(failure);
+                }
                 g_connect_running.store(false);
             });
         } catch (const std::exception &e) {
