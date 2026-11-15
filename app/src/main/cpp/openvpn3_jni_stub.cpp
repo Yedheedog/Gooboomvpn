@@ -77,9 +77,9 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
                 tun_builder_class_, "addAddress",
                 "(Ljava/lang/String;ILjava/lang/String;ZZ)V");
             route_method_ = env->GetMethodID(
-                tun_builder_class_, "addRoute", "(Ljava/lang/String;I)V");
+                tun_builder_class_, "addRoute", "(Ljava/lang/String;IZ)V");
             exclude_route_method_ = env->GetMethodID(
-                tun_builder_class_, "excludeRoute", "(Ljava/lang/String;I)V");
+                tun_builder_class_, "excludeRoute", "(Ljava/lang/String;IZ)V");
             dns_method_ = env->GetMethodID(
                 tun_builder_class_, "addDnsServer", "(Ljava/lang/String;)V");
             search_domain_method_ = env->GetMethodID(
@@ -214,6 +214,8 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         return !clear_exception(env);
     }
 
+    // Android VpnService.Builder has no per-route metric API; preserve route
+    // reachability and document that OpenVPN metrics cannot be represented here.
     bool tun_builder_set_route_metric_default(int) override { return true; }
 
     bool tun_builder_reroute_gw(bool ipv4, bool ipv6, unsigned int) override {
@@ -225,15 +227,15 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     bool tun_builder_add_route(const std::string &address,
                                int prefix_length,
                                int,
-                               bool) override {
-        return call_string_int(route_method_, address, prefix_length);
+                               bool ipv6) override {
+        return call_string_int_bool(route_method_, address, prefix_length, ipv6);
     }
 
     bool tun_builder_exclude_route(const std::string &address,
                                    int prefix_length,
                                    int,
-                                   bool) override {
-        return call_string_int(exclude_route_method_, address, prefix_length);
+                                   bool ipv6) override {
+        return call_string_int_bool(exclude_route_method_, address, prefix_length, ipv6);
     }
 
     bool tun_builder_set_dns_options(const openvpn::DnsOptions &dns) override {
@@ -384,6 +386,22 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
             return false;
         }
         env->CallVoidMethod(tun_builder_, method, text, static_cast<jint>(number));
+        env->DeleteLocalRef(text);
+        return !clear_exception(env);
+    }
+
+    bool call_string_int_bool(jmethodID method, const std::string &value,
+                              int number, bool flag) {
+        ScopedJniEnv scoped(g_vm);
+        JNIEnv *env = scoped.get();
+        if (!ready(env) || method == nullptr) return false;
+        jstring text = env->NewStringUTF(value.c_str());
+        if (text == nullptr || env->ExceptionCheck()) {
+            clear_exception(env);
+            return false;
+        }
+        env->CallVoidMethod(tun_builder_, method, text, static_cast<jint>(number),
+                            flag ? JNI_TRUE : JNI_FALSE);
         env->DeleteLocalRef(text);
         return !clear_exception(env);
     }
