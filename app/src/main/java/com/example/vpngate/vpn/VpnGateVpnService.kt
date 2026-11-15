@@ -10,6 +10,10 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.vpngate.MainActivity
+import com.example.vpngate.data.ServerRanker
+import com.example.vpngate.data.VpnGateRepository
+import com.example.vpngate.data.VpnGateServer
+import kotlinx.coroutines.runBlocking
 
 /** Owns Android's VPN foreground-service lifecycle. The native core must own packet I/O. */
 class VpnGateVpnService : VpnService() {
@@ -18,6 +22,7 @@ class VpnGateVpnService : VpnService() {
         const val ACTION_DISCONNECT = "com.example.vpngate.action.DISCONNECT"
         const val EXTRA_PROFILE = "inline_profile_bytes"
         const val EXTRA_SERVER = "server_label"
+        const val EXTRA_SERVER_IP = "server_ip"
         private const val CHANNEL_ID = "vpn_connection"
         private const val NOTIFICATION_ID = 4101
     }
@@ -66,21 +71,13 @@ class VpnGateVpnService : VpnService() {
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, notification("Connected"))
             }
-            name == "CONNECT_RETURN" && error -> {
-                VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, message = info.ifBlank { "OpenVPN connection failed" }))
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
+            name == "CONNECT_RETURN" && error -> beginAutomaticFailover(info)
             name == "CONNECT_RETURN" -> {
                 VpnConnectionState.update(VpnUiState())
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
-            fatal || error -> {
-                VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, message = info.ifBlank { name }))
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
+            fatal || error -> beginAutomaticFailover(info)
             name == "EXITING" || name == "DISCONNECTED" -> {
                 VpnConnectionState.update(VpnUiState())
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -122,7 +119,13 @@ class VpnGateVpnService : VpnService() {
         // ERROR or stop its foreground service.
         if (nativeSessionActive) return
 
-        val server = intent.getStringExtra(EXTRA_SERVER) ?: "VPN Gate relay"
+        userRequestedDisconnect = false
+        attemptedServerIps.clear()
+        automaticFailoverAttempts = 0
+        activeServerIp = intent.getStringExtra(EXTRA_SERVER_IP)
+        activeServerLabel = intent.getStringExtra(EXTRA_SERVER) ?: "VPN Gate relay"
+        activeServerIp?.let { attemptedServerIps.add(it) }
+        val server = activeServerLabel ?: "VPN Gate relay"
         val profile = intent.getByteArrayExtra(EXTRA_PROFILE)
         VpnConnectionState.update(VpnUiState(VpnPhase.STARTING, server, "Preparing secure connection…"))
         startForeground(NOTIFICATION_ID, notification("Preparing connection to $server"))
@@ -153,8 +156,107 @@ class VpnGateVpnService : VpnService() {
 
     private var nativeStopInProgress = false
     private var nativeSessionActive = false
+    private var failoverInProgress = false
+    private var userRequestedDisconnect = false
+    private var activeServerIp: String? = null
+    private var activeServerLabel: String? = null
+    private var automaticFailoverAttempts = 0
+    private val attemptedServerIps = linkedSetOf<String>()
+
+    /**
+     * Recover only from an unexpected fatal OpenVPN event. The service remains foreground
+     * while it tears down the old native worker, refreshes sources, and tries another relay.
+     * Explicit user disconnects cancel the recovery cycle.
+     */
+    private fun beginAutomaticFailover(reason: String) {
+        if (userRequestedDisconnect || failoverInProgress || serviceDestroyed) return
+        if (automaticFailoverAttempts >= ServerRanker.MAX_AUTOMATIC_FAILOVER_ATTEMPTS) {
+            finishRecoveryFailure("Automatic recovery stopped after $automaticFailoverAttempts relay attempts. $reason")
+            return
+        }
+        failoverInProgress = true
+        nativeStopInProgress = true
+        VpnConnectionState.update(
+            VpnUiState(VpnPhase.STARTING, activeServerLabel, "Relay failed. Finding another relay…")
+        )
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, notification("Finding another relay…"))
+
+        Thread {
+            var next: VpnGateServer? = null
+            var profile: ByteArray? = null
+            var failure: String? = null
+            try {
+                OpenVpn3Native.stop()
+                val repository = VpnGateRepository(applicationContext)
+                val candidates = runBlocking { repository.fetchServers() }
+                next = ServerRanker.nextFailoverCandidate(
+                    candidates,
+                    currentServerIp = activeServerIp,
+                    attemptedServerIps = attemptedServerIps
+                )
+                if (next == null) {
+                    failure = "No untried compatible relay is available."
+                } else {
+                    profile = repository.decodeProfile(next)
+                }
+            } catch (t: Throwable) {
+                failure = t.message ?: "Could not prepare an alternate relay."
+            }
+
+            val selected = next
+            val profileBytes = profile
+            val errorMessage = failure
+            mainHandler.post {
+                nativeStopInProgress = false
+                failoverInProgress = false
+                if (serviceDestroyed || userRequestedDisconnect) {
+                    profileBytes?.fill(0)
+                    if (!serviceDestroyed) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        VpnConnectionState.update(VpnUiState())
+                        stopSelf()
+                    }
+                    return@post
+                }
+                if (selected == null || profileBytes == null) {
+                    finishRecoveryFailure(errorMessage ?: "No alternate relay could be started.")
+                    return@post
+                }
+
+                automaticFailoverAttempts += 1
+                activeServerIp = selected.ip
+                activeServerLabel = "\${selected.country} (\${selected.ip})"
+                attemptedServerIps.add(selected.ip)
+                VpnConnectionState.update(
+                    VpnUiState(VpnPhase.STARTING, activeServerLabel, "Trying alternate relay $automaticFailoverAttempts/\${ServerRanker.MAX_AUTOMATIC_FAILOVER_ATTEMPTS}…")
+                )
+                try {
+                    val startError = OpenVpn3Native.start(this, profileBytes)
+                    if (startError != null) throw IllegalStateException(startError)
+                    nativeSessionActive = true
+                } catch (t: Throwable) {
+                    nativeSessionActive = false
+                    profileBytes.fill(0)
+                    beginAutomaticFailover(t.message ?: "Alternate relay startup failed.")
+                } finally {
+                    profileBytes.fill(0)
+                }
+            }
+        }.start()
+    }
+
+    private fun finishRecoveryFailure(message: String) {
+        nativeSessionActive = false
+        failoverInProgress = false
+        nativeStopInProgress = false
+        VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, activeServerLabel, message))
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
 
     private fun stopVpn() {
+        userRequestedDisconnect = true
         if (nativeStopInProgress) return
         nativeStopInProgress = true
         VpnConnectionState.update(VpnUiState(VpnPhase.DISCONNECTING, message = "Disconnecting…"))
@@ -183,6 +285,7 @@ class VpnGateVpnService : VpnService() {
 
     override fun onDestroy() {
         serviceDestroyed = true
+        userRequestedDisconnect = true
         if (!nativeStopInProgress && OpenVpn3Native.isCoreAvailable()) {
             Thread { OpenVpn3Native.stop() }.start()
         }
