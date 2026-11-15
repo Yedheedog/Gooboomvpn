@@ -7,6 +7,8 @@ plugins {
 android {
     namespace = "com.example.vpngate"
     compileSdk = 35
+    // Keep AGP's CMake toolchain identical to the NDK used by vcpkg native dependencies.
+    ndkVersion = "27.2.12479018"
     defaultConfig {
         applicationId = "com.example.vpngate"
         minSdk = 26
