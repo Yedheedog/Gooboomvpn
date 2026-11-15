@@ -491,110 +491,111 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
     }
 
     try {
-    const jsize length = env->GetArrayLength(profile_bytes);
-    if (length <= 0) return make_java_string(env, "The OpenVPN profile is empty.");
-    const long max_profile_size = openvpn::ClientAPI::max_profile_size();
-    if (max_profile_size <= 0 || static_cast<long>(length) > max_profile_size) {
-        return make_java_string(env, "The OpenVPN profile exceeds the supported size limit.");
-    }
-    std::vector<jbyte> bytes(static_cast<size_t>(length));
-    env->GetByteArrayRegion(profile_bytes, 0, length, bytes.data());
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
+        const jsize length = env->GetArrayLength(profile_bytes);
+        if (length <= 0) return make_java_string(env, "The OpenVPN profile is empty.");
+        const long max_profile_size = openvpn::ClientAPI::max_profile_size();
+        if (max_profile_size <= 0 || static_cast<long>(length) > max_profile_size) {
+            return make_java_string(env, "The OpenVPN profile exceeds the supported size limit.");
+        }
+        std::vector<jbyte> bytes(static_cast<size_t>(length));
+        env->GetByteArrayRegion(profile_bytes, 0, length, bytes.data());
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            std::fill(bytes.begin(), bytes.end(), 0);
+            return make_java_string(env, "Could not read the OpenVPN profile.");
+        }
+        std::string content(reinterpret_cast<const char *>(bytes.data()), bytes.size());
         std::fill(bytes.begin(), bytes.end(), 0);
-        return make_java_string(env, "Could not read the OpenVPN profile.");
-    }
-    std::string content(reinterpret_cast<const char *>(bytes.data()), bytes.size());
-    std::fill(bytes.begin(), bytes.end(), 0);
-
-    auto client = std::make_shared<AndroidOpenVPNClient>(env, service);
-    if (!client->callbacks_ready()) {
-        return make_java_string(env,
-            "Android VPN callbacks could not be initialized; refusing to start OpenVPN.");
-    }
-    openvpn::ClientAPI::Config config;
-    config.content = content;
-    // VPN Gate profiles are commonly IPv4-only. Do not let the device keep using
-    // an unused address family outside the tunnel, which would leak traffic.
-    config.allowUnusedAddrFamilies = "no";
-    std::fill(content.begin(), content.end(), '\0');
-
-    const openvpn::ClientAPI::EvalConfig evaluated = client->eval_config(config);
-    // The config copy can contain inline certificates and private-key material.
-    std::fill(config.content.begin(), config.content.end(), '\0');
-    if (evaluated.error) {
-        return make_java_string(env, evaluated.message.empty()
-            ? "OpenVPN rejected the selected profile." : evaluated.message);
-    }
-    if (evaluated.externalPki || evaluated.privateKeyPasswordRequired ||
-        !evaluated.staticChallenge.empty()) {
-        return make_java_string(env,
-            "This relay profile requires external key, private-key password, or challenge handling that the app does not support yet.");
-    }
-
-    // VPN Gate's published OpenVPN setup uses the shared relay credentials
-    // "vpn" / "vpn" when a profile requests username/password authentication.
-    if (!evaluated.autologin) {
-        openvpn::ClientAPI::ProvideCreds credentials;
-        credentials.username = evaluated.userlockedUsername.empty()
-            ? "vpn" : evaluated.userlockedUsername;
-        credentials.password = "vpn";
-        const openvpn::ClientAPI::Status credential_status =
-            client->provide_creds(credentials);
-        std::fill(credentials.username.begin(), credentials.username.end(), '\0');
-        std::fill(credentials.password.begin(), credentials.password.end(), '\0');
-        if (credential_status.error) {
-            return make_java_string(env, credential_status.message.empty()
-                ? "OpenVPN rejected the VPN Gate relay credentials."
-                : credential_status.message);
+    
+        auto client = std::make_shared<AndroidOpenVPNClient>(env, service);
+        if (!client->callbacks_ready()) {
+            return make_java_string(env,
+                "Android VPN callbacks could not be initialized; refusing to start OpenVPN.");
         }
-    }
-
-    // Hold the lifecycle lock across stale-worker joining and new-worker startup.
-    // This pairs with nativeStop() so start cannot slip into an in-progress teardown.
-    std::lock_guard<std::mutex> lifecycle_lock(g_lifecycle_mutex);
-    std::thread previous_worker;
-    {
-        std::lock_guard<std::mutex> lock(g_client_mutex);
-        if (g_connect_running.load()) {
-            return make_java_string(env, "A VPN connection is already starting or running.");
+        openvpn::ClientAPI::Config config;
+        config.content = content;
+        // VPN Gate profiles are commonly IPv4-only. Do not let the device keep using
+        // an unused address family outside the tunnel, which would leak traffic.
+        config.allowUnusedAddrFamilies = "no";
+        std::fill(content.begin(), content.end(), '\0');
+    
+        const openvpn::ClientAPI::EvalConfig evaluated = client->eval_config(config);
+        // The config copy can contain inline certificates and private-key material.
+        std::fill(config.content.begin(), config.content.end(), '\0');
+        if (evaluated.error) {
+            return make_java_string(env, evaluated.message.empty()
+                ? "OpenVPN rejected the selected profile." : evaluated.message);
         }
-        if (g_connect_worker.joinable()) previous_worker = std::move(g_connect_worker);
-        g_client.reset();
-    }
-    if (previous_worker.joinable()) previous_worker.join();
-
-    {
-        std::lock_guard<std::mutex> lock(g_client_mutex);
-        if (g_connect_running.load()) {
-            return make_java_string(env, "A VPN connection is already starting or running.");
+        if (evaluated.externalPki || evaluated.privateKeyPasswordRequired ||
+            !evaluated.staticChallenge.empty()) {
+            return make_java_string(env,
+                "This relay profile requires external key, private-key password, or challenge handling that the app does not support yet.");
         }
-        g_client = client;
-        g_connect_running.store(true);
-        try {
-            g_connect_worker = std::thread([client]() {
-                try {
-                    const openvpn::ClientAPI::Status status = client->connect();
-                    client->emit_status(status);
-                } catch (const std::exception &e) {
-                    openvpn::ClientAPI::Status failure;
-                    failure.error = true;
-                    failure.message = std::string("OpenVPN worker exception: ") + e.what();
-                    client->emit_status(failure);
-                } catch (...) {
-                    openvpn::ClientAPI::Status failure;
-                    failure.error = true;
-                    failure.message = "OpenVPN worker failed with an unknown native exception.";
-                    client->emit_status(failure);
-                }
-                g_connect_running.store(false);
-            });
-        } catch (const std::exception &e) {
-            g_connect_running.store(false);
+    
+        // VPN Gate's published OpenVPN setup uses the shared relay credentials
+        // "vpn" / "vpn" when a profile requests username/password authentication.
+        if (!evaluated.autologin) {
+            openvpn::ClientAPI::ProvideCreds credentials;
+            credentials.username = evaluated.userlockedUsername.empty()
+                ? "vpn" : evaluated.userlockedUsername;
+            credentials.password = "vpn";
+            const openvpn::ClientAPI::Status credential_status =
+                client->provide_creds(credentials);
+            std::fill(credentials.username.begin(), credentials.username.end(), '\0');
+            std::fill(credentials.password.begin(), credentials.password.end(), '\0');
+            if (credential_status.error) {
+                return make_java_string(env, credential_status.message.empty()
+                    ? "OpenVPN rejected the VPN Gate relay credentials."
+                    : credential_status.message);
+            }
+        }
+    
+        // Hold the lifecycle lock across stale-worker joining and new-worker startup.
+        // This pairs with nativeStop() so start cannot slip into an in-progress teardown.
+        std::lock_guard<std::mutex> lifecycle_lock(g_lifecycle_mutex);
+        std::thread previous_worker;
+        {
+            std::lock_guard<std::mutex> lock(g_client_mutex);
+            if (g_connect_running.load()) {
+                return make_java_string(env, "A VPN connection is already starting or running.");
+            }
+            if (g_connect_worker.joinable()) previous_worker = std::move(g_connect_worker);
             g_client.reset();
-            return make_java_string(env, std::string("Could not start OpenVPN worker: ") + e.what());
         }
-    }
+        if (previous_worker.joinable()) previous_worker.join();
+    
+        {
+            std::lock_guard<std::mutex> lock(g_client_mutex);
+            if (g_connect_running.load()) {
+                return make_java_string(env, "A VPN connection is already starting or running.");
+            }
+            g_client = client;
+            g_connect_running.store(true);
+            try {
+                g_connect_worker = std::thread([client]() {
+                    try {
+                        const openvpn::ClientAPI::Status status = client->connect();
+                        client->emit_status(status);
+                    } catch (const std::exception &e) {
+                        openvpn::ClientAPI::Status failure;
+                        failure.error = true;
+                        failure.message = std::string("OpenVPN worker exception: ") + e.what();
+                        client->emit_status(failure);
+                    } catch (...) {
+                        openvpn::ClientAPI::Status failure;
+                        failure.error = true;
+                        failure.message = "OpenVPN worker failed with an unknown native exception.";
+                        client->emit_status(failure);
+                    }
+                    g_connect_running.store(false);
+                });
+            } catch (const std::exception &e) {
+                g_connect_running.store(false);
+                g_client.reset();
+                return make_java_string(env, std::string("Could not start OpenVPN worker: ") + e.what());
+            }
+        }
+    
     return nullptr;
     } catch (const std::exception &e) {
         return make_java_string(env, std::string("Could not initialize OpenVPN: ") + e.what());
