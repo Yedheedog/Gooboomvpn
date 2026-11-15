@@ -47,6 +47,82 @@ class ServerDiscoveryTest {
         assertNull(ServerRanker.fastest(invalid))
     }
 
+    @Test
+    fun supportsSpeedAndBalancedSortModesAndCountryFiltering() {
+        val japanSlow = server(host = "japan-slow", ping = 12, speed = 5_000_000).copy(countryCode = "JP")
+        val japanFast = server(host = "japan-fast", ping = 80, speed = 100_000_000).copy(countryCode = "JP")
+        val usRelay = server(host = "us-fast", ping = 25, speed = 80_000_000).copy(countryCode = "US")
+
+        assertEquals(
+            "japan-fast",
+            ServerRanker.sort(listOf(japanSlow, japanFast), RelaySelectionMode.HIGHEST_SPEED).first().hostName
+        )
+        assertEquals(
+            "japan-slow",
+            ServerRanker.sort(listOf(japanSlow, japanFast), RelaySelectionMode.LOWEST_PING).first().hostName
+        )
+        assertEquals(
+            setOf("japan-slow", "japan-fast"),
+            ServerRanker.filterByCountry(listOf(japanSlow, japanFast, usRelay), setOf("jp"))
+                .map { it.hostName }.toSet()
+        )
+        assertEquals(
+            "japan-fast",
+            ServerRanker.sort(listOf(japanSlow, japanFast), RelaySelectionMode.HIGHEST_SPEED).first().hostName
+        )
+    }
+
+    @Test
+    fun deduplicatesSameRelayAcrossDifferentSources() {
+        val builtIn = server(host = "same-relay").copy(sourceId = "vpngate-default", sourceName = "VPN Gate")
+        val custom = builtIn.copy(sourceId = "custom-source", sourceName = "Custom provider")
+
+        val result = VpnGateRepository().deduplicateServers(listOf(builtIn, custom))
+
+        assertEquals(1, result.size)
+        assertEquals("VPN Gate", result.single().sourceName)
+    }
+
+    @Test
+    fun importedProfilesRemainEligibleWithoutPublishedRelayMetrics() {
+        val imported = server(host = "imported-profile", ping = Long.MAX_VALUE, speed = 1)
+            .copy(isImportedProfile = true, countryCode = "--")
+
+        assertEquals(true, ServerRanker.isEligible(imported))
+        assertEquals("imported-profile", ServerRanker.sort(
+            listOf(imported), RelaySelectionMode.LOWEST_PING
+        ).single().hostName)
+    }
+
+    @Test
+    fun failoverSkipsCurrentAndPreviouslyFailedRelaysUsingLowestPing() {
+        val current = server(host = "current", ping = 5).copy(ip = "192.0.2.1")
+        val failed = server(host = "failed", ping = 7).copy(ip = "192.0.2.2")
+        val next = server(host = "next", ping = 18).copy(ip = "192.0.2.3")
+        val fastest = server(host = "fastest", ping = 2).copy(ip = "192.0.2.4")
+
+        val candidate = ServerRanker.nextFailoverCandidate(
+            listOf(current, failed, next, fastest),
+            currentServerIp = current.ip,
+            attemptedServerIps = setOf(failed.ip)
+        )
+
+        assertEquals("fastest", candidate?.hostName)
+        assertEquals(3, ServerRanker.MAX_AUTOMATIC_FAILOVER_ATTEMPTS)
+    }
+
+    @Test
+    fun failoverReturnsNullWhenNoUntriedEligibleRelayRemains() {
+        val first = server(host = "first").copy(ip = "192.0.2.1")
+        val second = server(host = "second").copy(ip = "192.0.2.2")
+        val candidate = ServerRanker.nextFailoverCandidate(
+            listOf(first, second),
+            currentServerIp = first.ip,
+            attemptedServerIps = setOf(second.ip)
+        )
+        assertNull(candidate)
+    }
+
     private fun server(
         host: String,
         ping: Long = 10,

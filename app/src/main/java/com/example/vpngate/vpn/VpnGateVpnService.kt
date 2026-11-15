@@ -6,10 +6,18 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.vpngate.MainActivity
+import com.example.vpngate.data.ServerRanker
+import com.example.vpngate.data.VpnGateRepository
+import com.example.vpngate.data.VpnGateServer
+import kotlinx.coroutines.runBlocking
 
 /** Owns Android's VPN foreground-service lifecycle. The native core must own packet I/O. */
 class VpnGateVpnService : VpnService() {
@@ -18,6 +26,8 @@ class VpnGateVpnService : VpnService() {
         const val ACTION_DISCONNECT = "com.example.vpngate.action.DISCONNECT"
         const val EXTRA_PROFILE = "inline_profile_bytes"
         const val EXTRA_SERVER = "server_label"
+        const val EXTRA_SERVER_IP = "server_ip"
+        const val EXTRA_ALLOWED_COUNTRY = "allowed_country_code"
         private const val CHANNEL_ID = "vpn_connection"
         private const val NOTIFICATION_ID = 4101
     }
@@ -34,6 +44,20 @@ class VpnGateVpnService : VpnService() {
      * notification lifecycle work onto the main thread, and ignore late events after teardown.
      */
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var connectedAtElapsedRealtime: Long = 0L
+    private val trafficStatsPoll = object : Runnable {
+        override fun run() {
+            if (serviceDestroyed || !nativeSessionActive || userRequestedDisconnect) return
+            val stats = runCatching { OpenVpn3Native.tunStats() }.getOrDefault(longArrayOf(0L, 0L))
+            if (stats.size >= 2) {
+                val current = VpnConnectionState.state.value
+                val duration = if (connectedAtElapsedRealtime > 0L) ((android.os.SystemClock.elapsedRealtime() - connectedAtElapsedRealtime) / 1000L).coerceAtLeast(0L) else 0L
+                VpnConnectionState.update(current.copy(uploadedBytes = stats[0], downloadedBytes = stats[1], sessionDurationSeconds = duration))
+            }
+            mainHandler.postDelayed(this, 1000L)
+        }
+    }
+
     @Volatile private var serviceDestroyed = false
     // Accessed on the main thread; prevents onDestroy() racing an explicit disconnect.
 
@@ -55,32 +79,32 @@ class VpnGateVpnService : VpnService() {
         // An explicit disconnect owns the state transition until nativeStop() has
         // joined the OpenVPN worker. Ignore late CONNECTED/terminal events meanwhile.
         if (nativeStopInProgress) return
+        val sessionWasActive = nativeSessionActive
         if (name == "CONNECT_RETURN" || fatal || error ||
             name == "EXITING" || name == "DISCONNECTED") {
             nativeSessionActive = false
+            mainHandler.removeCallbacks(trafficStatsPoll)
         }
 
         when {
             name == "CONNECTED" -> {
-                VpnConnectionState.update(VpnUiState(VpnPhase.CONNECTED, message = "VPN tunnel connected"))
+                if (connectedAtElapsedRealtime == 0L) connectedAtElapsedRealtime = android.os.SystemClock.elapsedRealtime()
+                runCatching { setUnderlyingNetworks(selectedUnderlyingNetwork?.let { arrayOf(it) }) }
+                VpnConnectionState.update(VpnConnectionState.state.value.copy(phase = VpnPhase.CONNECTED, serverLabel = activeServerLabel, message = "VPN tunnel connected"))
+                mainHandler.removeCallbacks(trafficStatsPoll)
+                mainHandler.post(trafficStatsPoll)
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, notification("Connected"))
             }
-            name == "CONNECT_RETURN" && error -> {
-                VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, message = info.ifBlank { "OpenVPN connection failed" }))
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
+            name == "CONNECT_RETURN" && error -> beginAutomaticFailover(info)
+            name == "CONNECT_RETURN" && sessionWasActive -> beginAutomaticFailover("OpenVPN session ended unexpectedly")
             name == "CONNECT_RETURN" -> {
                 VpnConnectionState.update(VpnUiState())
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
-            fatal || error -> {
-                VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, message = info.ifBlank { name }))
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
+            fatal || error -> beginAutomaticFailover(info)
+            (name == "EXITING" || name == "DISCONNECTED") && sessionWasActive -> beginAutomaticFailover(info.ifBlank { "Relay disconnected unexpectedly" })
             name == "EXITING" || name == "DISCONNECTED" -> {
                 VpnConnectionState.update(VpnUiState())
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -97,6 +121,89 @@ class VpnGateVpnService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        runCatching {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .build()
+            getSystemService(ConnectivityManager::class.java)
+                .registerNetworkCallback(request, physicalNetworkCallback)
+            networkCallbackRegistered = true
+        }
+    }
+
+    /**
+     * Track validated non-VPN networks. If the preferred underlying transport changes while
+     * connected, restart the current relay over the new network before considering failover.
+     */
+    private fun updateUnderlyingNetwork() {
+        val previous = selectedUnderlyingNetwork
+        val candidate = physicalNetworks.entries
+            .filter {
+                it.value.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    it.value.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) &&
+                    !it.value.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            }
+            .sortedWith(
+                compareByDescending<Map.Entry<Network, NetworkCapabilities>> {
+                    it.value.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                }.thenByDescending {
+                    it.value.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                }
+            )
+            .firstOrNull()?.key
+
+        selectedUnderlyingNetwork = candidate
+        runCatching { setUnderlyingNetworks(candidate?.let { arrayOf(it) }) }
+        if (previous != candidate && nativeSessionActive) {
+            if (candidate == null) {
+                underlyingNetworkChangePending = true
+            } else if (previous != null || underlyingNetworkChangePending) {
+                underlyingNetworkChangePending = false
+                reconnectCurrentRelayForNetworkChange()
+            }
+        }
+    }
+
+    private fun reconnectCurrentRelayForNetworkChange() {
+        if (networkRecoveryInProgress || nativeStopInProgress || userRequestedDisconnect) return
+        val savedProfile = activeProfile?.copyOf() ?: return
+        networkRecoveryInProgress = true
+        nativeStopInProgress = true
+        VpnConnectionState.update(
+            VpnUiState(VpnPhase.STARTING, activeServerLabel, "Network changed. Reconnecting current relay…")
+        )
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, notification("Reconnecting after network change…"))
+
+        Thread {
+            runCatching { OpenVpn3Native.stop() }
+            mainHandler.post {
+                nativeStopInProgress = false
+                networkRecoveryInProgress = false
+                if (serviceDestroyed || userRequestedDisconnect) {
+                    savedProfile.fill(0)
+                    if (!serviceDestroyed) {
+                        activeProfile?.fill(0)
+                        activeProfile = null
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        VpnConnectionState.update(VpnUiState())
+                        stopSelf()
+                    }
+                    return@post
+                }
+                try {
+                    val startError = OpenVpn3Native.start(this, savedProfile)
+                    if (startError != null) throw IllegalStateException(startError)
+                    nativeSessionActive = true
+                } catch (t: Throwable) {
+                    nativeSessionActive = false
+                    beginAutomaticFailover(t.message ?: "Could not reconnect after network change.")
+                } finally {
+                    savedProfile.fill(0)
+                }
+            }
+        }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -122,7 +229,16 @@ class VpnGateVpnService : VpnService() {
         // ERROR or stop its foreground service.
         if (nativeSessionActive) return
 
-        val server = intent.getStringExtra(EXTRA_SERVER) ?: "VPN Gate relay"
+        userRequestedDisconnect = false
+        connectedAtElapsedRealtime = 0L
+        VpnConnectionState.update(VpnUiState(VpnPhase.STARTING, message = "Preparing secure connection…"))
+        attemptedServerIps.clear()
+        automaticFailoverAttempts = 0
+        activeServerIp = intent.getStringExtra(EXTRA_SERVER_IP)
+        activeCountryFilter = intent.getStringExtra(EXTRA_ALLOWED_COUNTRY)?.takeIf { it.isNotBlank() }?.let { setOf(it) } ?: emptySet()
+        activeServerLabel = intent.getStringExtra(EXTRA_SERVER) ?: "VPN Gate relay"
+        activeServerIp?.let { attemptedServerIps.add(it) }
+        val server = activeServerLabel ?: "VPN Gate relay"
         val profile = intent.getByteArrayExtra(EXTRA_PROFILE)
         VpnConnectionState.update(VpnUiState(VpnPhase.STARTING, server, "Preparing secure connection…"))
         startForeground(NOTIFICATION_ID, notification("Preparing connection to $server"))
@@ -135,12 +251,16 @@ class VpnGateVpnService : VpnService() {
             if (!OpenVpn3Native.isCoreAvailable()) {
                 throw IllegalStateException("OpenVPN 3 native core is unavailable.")
             }
+            activeProfile?.fill(0)
+            activeProfile = profile.copyOf()
             val startError = OpenVpn3Native.start(this, profile)
             if (startError != null) throw IllegalStateException(startError)
             nativeSessionActive = true
             // CONNECTED is set only by the native OpenVPN CONNECTED event callback.
         } catch (t: Throwable) {
             nativeSessionActive = false
+            activeProfile?.fill(0)
+            activeProfile = null
             VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, server, t.message ?: "VPN startup failed"))
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf(startId)
@@ -153,8 +273,145 @@ class VpnGateVpnService : VpnService() {
 
     private var nativeStopInProgress = false
     private var nativeSessionActive = false
+    private var failoverInProgress = false
+    private var userRequestedDisconnect = false
+    private var activeServerIp: String? = null
+    private var activeServerLabel: String? = null
+    private var activeCountryFilter: Set<String> = emptySet()
+    private var activeProfile: ByteArray? = null
+    private var networkRecoveryInProgress = false
+    private val physicalNetworks = linkedMapOf<Network, NetworkCapabilities>()
+    private var selectedUnderlyingNetwork: Network? = null
+    private var underlyingNetworkChangePending = false
+    private var networkCallbackRegistered = false
+
+    private val physicalNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            mainHandler.post {
+                val capabilities = getSystemService(ConnectivityManager::class.java).getNetworkCapabilities(network)
+                if (capabilities != null) {
+                    physicalNetworks[network] = capabilities
+                    updateUnderlyingNetwork()
+                }
+            }
+        }
+
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            mainHandler.post {
+                physicalNetworks[network] = capabilities
+                updateUnderlyingNetwork()
+            }
+        }
+
+        override fun onLost(network: Network) {
+            mainHandler.post {
+                physicalNetworks.remove(network)
+                updateUnderlyingNetwork()
+            }
+        }
+    }
+    private var automaticFailoverAttempts = 0
+    private val attemptedServerIps = linkedSetOf<String>()
+
+    /**
+     * Recover only from an unexpected fatal OpenVPN event. The service remains foreground
+     * while it tears down the old native worker, refreshes sources, and tries another relay.
+     * Explicit user disconnects cancel the recovery cycle.
+     */
+    private fun beginAutomaticFailover(reason: String) {
+        if (userRequestedDisconnect || failoverInProgress || serviceDestroyed) return
+        if (automaticFailoverAttempts >= ServerRanker.MAX_AUTOMATIC_FAILOVER_ATTEMPTS) {
+            finishRecoveryFailure("Automatic recovery stopped after $automaticFailoverAttempts relay attempts. $reason")
+            return
+        }
+        failoverInProgress = true
+        nativeStopInProgress = true
+        VpnConnectionState.update(
+            VpnUiState(VpnPhase.STARTING, activeServerLabel, "Relay failed. Finding another relay…")
+        )
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, notification("Finding another relay…"))
+
+        Thread {
+            var next: VpnGateServer? = null
+            var profile: ByteArray? = null
+            var failure: String? = null
+            try {
+                OpenVpn3Native.stop()
+                val repository = VpnGateRepository(applicationContext)
+                val candidates = runBlocking { repository.fetchServers() }
+                next = ServerRanker.nextFailoverCandidate(
+                    candidates,
+                    currentServerIp = activeServerIp,
+                    attemptedServerIps = attemptedServerIps,
+                    allowedCountryCodes = activeCountryFilter
+                )
+                if (next == null) {
+                    failure = "No untried compatible relay is available."
+                } else {
+                    profile = repository.decodeProfile(next)
+                }
+            } catch (t: Throwable) {
+                failure = t.message ?: "Could not prepare an alternate relay."
+            }
+
+            val selected = next
+            val profileBytes = profile
+            val errorMessage = failure
+            mainHandler.post {
+                nativeStopInProgress = false
+                failoverInProgress = false
+                if (serviceDestroyed || userRequestedDisconnect) {
+                    profileBytes?.fill(0)
+                    if (!serviceDestroyed) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        VpnConnectionState.update(VpnUiState())
+                        stopSelf()
+                    }
+                    return@post
+                }
+                if (selected == null || profileBytes == null) {
+                    finishRecoveryFailure(errorMessage ?: "No alternate relay could be started.")
+                    return@post
+                }
+
+                automaticFailoverAttempts += 1
+                activeServerIp = selected.ip
+                activeServerLabel = "${selected.country} (${selected.ip})"
+                attemptedServerIps.add(selected.ip)
+                VpnConnectionState.update(
+                    VpnUiState(VpnPhase.STARTING, activeServerLabel, "Trying alternate relay $automaticFailoverAttempts/${ServerRanker.MAX_AUTOMATIC_FAILOVER_ATTEMPTS}…")
+                )
+                try {
+                    activeProfile?.fill(0)
+                    activeProfile = profileBytes.copyOf()
+                    val startError = OpenVpn3Native.start(this, profileBytes)
+                    if (startError != null) throw IllegalStateException(startError)
+                    nativeSessionActive = true
+                } catch (t: Throwable) {
+                    nativeSessionActive = false
+                    profileBytes.fill(0)
+                    beginAutomaticFailover(t.message ?: "Alternate relay startup failed.")
+                } finally {
+                    profileBytes.fill(0)
+                }
+            }
+        }.start()
+    }
+
+    private fun finishRecoveryFailure(message: String) {
+        nativeSessionActive = false
+        activeProfile?.fill(0)
+        activeProfile = null
+        failoverInProgress = false
+        nativeStopInProgress = false
+        VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, activeServerLabel, message))
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
 
     private fun stopVpn() {
+        userRequestedDisconnect = true
         if (nativeStopInProgress) return
         nativeStopInProgress = true
         VpnConnectionState.update(VpnUiState(VpnPhase.DISCONNECTING, message = "Disconnecting…"))
@@ -166,6 +423,8 @@ class VpnGateVpnService : VpnService() {
             mainHandler.post {
                 nativeStopInProgress = false
                 nativeSessionActive = false
+                activeProfile?.fill(0)
+                activeProfile = null
                 if (!serviceDestroyed) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     VpnConnectionState.update(VpnUiState())
@@ -183,6 +442,17 @@ class VpnGateVpnService : VpnService() {
 
     override fun onDestroy() {
         serviceDestroyed = true
+        userRequestedDisconnect = true
+        mainHandler.removeCallbacks(trafficStatsPoll)
+        activeProfile?.fill(0)
+        activeProfile = null
+        if (networkCallbackRegistered) {
+            runCatching {
+                getSystemService(ConnectivityManager::class.java)
+                    .unregisterNetworkCallback(physicalNetworkCallback)
+            }
+            networkCallbackRegistered = false
+        }
         if (!nativeStopInProgress && OpenVpn3Native.isCoreAvailable()) {
             Thread { OpenVpn3Native.stop() }.start()
         }

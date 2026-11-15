@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - "device-test/**"
+      - "feature/**"
 
 permissions:
   contents: read
@@ -38,10 +39,10 @@ jobs:
 
       - name: Install Android build dependencies
         run: |
-          sdkmanager --install \\
-            "platforms;android-35" \\
-            "build-tools;35.0.0" \\
-            "ndk;27.2.12479018" \\
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
       - name: Install host pkg-config
@@ -55,11 +56,25 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Test and package debug and release APKs
+      - name: Prepare release signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          gradle --no-daemon \\
-            :app:testDebugUnitTest \\
-            :app:assembleDebug \\
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/bust-the-gate-release.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          echo "RELEASE_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Test and package debug and release APKs
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          gradle --no-daemon \
+            :app:testDebugUnitTest \
+            :app:assembleDebug \
             :app:assembleRelease
 
       - name: Verify APK contents and debug signature
@@ -87,7 +102,12 @@ jobs:
 
           "$APKSIGNER" verify --verbose "$DEBUG_APK"
           echo "Debug APK: $DEBUG_APK (debug-key signed; installable test build)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Release APK: $RELEASE_APK (unsigned; package/ABI contents verified)" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "${RELEASE_KEYSTORE_PATH:-}" ]]; then
+            "$APKSIGNER" verify --verbose "$RELEASE_APK"
+            echo "Release APK: $RELEASE_APK (PKCS12 release-key signed and verified)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Release APK: $RELEASE_APK (unsigned; signing secrets unavailable)" >> "$GITHUB_STEP_SUMMARY"
+          fi
           sha256sum "$DEBUG_APK" "$RELEASE_APK"
 
       - name: Upload device-test APKs

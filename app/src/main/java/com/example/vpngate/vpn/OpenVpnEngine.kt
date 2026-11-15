@@ -11,13 +11,15 @@ import com.example.vpngate.data.VpnGateServer
  * published exclusively by the native OpenVPN client after its connection event.
  */
 class NativeOpenVpn3Engine(private val context: Context) {
-    fun connect(server: VpnGateServer, inlineProfile: ByteArray) {
+    fun connect(server: VpnGateServer, inlineProfile: ByteArray, allowedCountryCode: String? = null) {
         check(VpnService.prepare(context) == null) {
             "Android VPN permission has not been granted. Request consent before starting the service."
         }
         val intent = Intent(context, VpnGateVpnService::class.java).apply {
             action = VpnGateVpnService.ACTION_CONNECT
             putExtra(VpnGateVpnService.EXTRA_SERVER, "${server.country} (${server.ip})")
+            putExtra(VpnGateVpnService.EXTRA_SERVER_IP, server.ip)
+            putExtra(VpnGateVpnService.EXTRA_ALLOWED_COUNTRY, allowedCountryCode)
             putExtra(VpnGateVpnService.EXTRA_PROFILE, inlineProfile.copyOf())
         }
         context.startForegroundService(intent)
