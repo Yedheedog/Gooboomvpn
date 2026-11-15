@@ -454,6 +454,9 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
 };
 
 std::mutex g_client_mutex;
+// Serialize concurrent stop callers so every caller returns only after the active
+// worker has been joined, even when another caller already moved the thread object.
+std::mutex g_stop_mutex;
 std::shared_ptr<AndroidOpenVPNClient> g_client;
 std::thread g_connect_worker;
 std::atomic<bool> g_connect_running{false};
@@ -579,6 +582,7 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStop(JNIEnv *, jobject) {
+    std::lock_guard<std::mutex> stop_lock(g_stop_mutex);
     std::thread worker;
     {
         std::lock_guard<std::mutex> lock(g_client_mutex);
