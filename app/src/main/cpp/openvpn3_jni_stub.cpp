@@ -454,9 +454,9 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
 };
 
 std::mutex g_client_mutex;
-// Serialize concurrent stop callers so every caller returns only after the active
-// worker has been joined, even when another caller already moved the thread object.
-std::mutex g_stop_mutex;
+// Serialize native start/stop lifecycle operations. Always acquire this before
+// g_client_mutex so a new worker cannot start while a stop caller is joining the old one.
+std::mutex g_lifecycle_mutex;
 std::shared_ptr<AndroidOpenVPNClient> g_client;
 std::thread g_connect_worker;
 std::atomic<bool> g_connect_running{false};
@@ -535,6 +535,9 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         }
     }
 
+    // Hold the lifecycle lock across stale-worker joining and new-worker startup.
+    // This pairs with nativeStop() so start cannot slip into an in-progress teardown.
+    std::lock_guard<std::mutex> lifecycle_lock(g_lifecycle_mutex);
     std::thread previous_worker;
     {
         std::lock_guard<std::mutex> lock(g_client_mutex);
@@ -582,7 +585,7 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStop(JNIEnv *, jobject) {
-    std::lock_guard<std::mutex> stop_lock(g_stop_mutex);
+    std::lock_guard<std::mutex> lifecycle_lock(g_lifecycle_mutex);
     std::thread worker;
     {
         std::lock_guard<std::mutex> lock(g_client_mutex);
