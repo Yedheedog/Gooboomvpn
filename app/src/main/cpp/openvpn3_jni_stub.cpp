@@ -418,15 +418,34 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     void emit_log(const std::string &message) {
         ScopedJniEnv scoped(g_vm);
         JNIEnv *env = scoped.get();
-        if (env == nullptr || service_ == nullptr || log_method_ == nullptr) return;
+        if (env == nullptr) {
+            __android_log_write(ANDROID_LOG_ERROR, "Gooboom_JNI_Fault",
+                                "JNI environment unavailable while forwarding OpenVPN log.");
+            return;
+        }
+        if (service_ == nullptr || log_method_ == nullptr) {
+            __android_log_write(ANDROID_LOG_ERROR, "Gooboom_JNI_Fault",
+                                "Kotlin log callback is not initialized.");
+            return;
+        }
+
         jstring jmessage = env->NewStringUTF(message.c_str());
-        if (clear_exception(env) || jmessage == nullptr) {
+        if (jmessage == nullptr || env->ExceptionCheck()) {
+            __android_log_write(ANDROID_LOG_ERROR, "Gooboom_JNI_Fault",
+                                "Could not allocate Java string for OpenVPN log callback.");
+            if (env->ExceptionCheck()) env->ExceptionClear();
             if (jmessage != nullptr) env->DeleteLocalRef(jmessage);
             return;
         }
+
         env->CallVoidMethod(service_, log_method_, jmessage);
+        const bool callback_failed = env->ExceptionCheck();
         env->DeleteLocalRef(jmessage);
-        clear_exception(env);
+        if (callback_failed) {
+            __android_log_write(ANDROID_LOG_ERROR, "Gooboom_JNI_Fault",
+                                "Kotlin onNativeLog callback threw; exception cleared on native worker.");
+            env->ExceptionClear();
+        }
     }
 
     void emit_event(const std::string &name, const std::string &info,
@@ -617,6 +636,12 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
             return make_java_string(env,
                 "Android VPN callbacks could not be initialized; refusing to start OpenVPN.");
         }
+
+        // Exercise the native LogInfo -> JNI -> Kotlin callback independently of
+        // OpenVPN's thread-local OPENVPN_LOG context and profile verbosity.
+        client->log(openvpn::ClientAPI::LogInfo(
+            "DIAG_JNI_TEST: Direct native-to-Kotlin log callback is operational."));
+
         openvpn::ClientAPI::Config config;
         config.content = content;
         ScopedWipe<std::string> wipe_config_content(config.content);
