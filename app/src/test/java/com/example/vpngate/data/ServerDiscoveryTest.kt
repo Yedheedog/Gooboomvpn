@@ -47,6 +47,31 @@ class ServerDiscoveryTest {
         assertNull(ServerRanker.fastest(invalid))
     }
 
+    @Test
+    fun supportsSpeedAndBalancedSortModesAndCountryFiltering() {
+        val japanSlow = server(host = "japan-slow", ping = 12, speed = 5_000_000).copy(countryCode = "JP")
+        val japanFast = server(host = "japan-fast", ping = 80, speed = 100_000_000).copy(countryCode = "JP")
+        val usRelay = server(host = "us-fast", ping = 25, speed = 80_000_000).copy(countryCode = "US")
+
+        assertEquals(
+            "japan-fast",
+            ServerRanker.sort(listOf(japanSlow, japanFast), RelaySelectionMode.HIGHEST_SPEED).first().hostName
+        )
+        assertEquals(
+            "japan-slow",
+            ServerRanker.sort(listOf(japanSlow, japanFast), RelaySelectionMode.LOWEST_PING).first().hostName
+        )
+        assertEquals(
+            setOf("japan-slow", "japan-fast"),
+            ServerRanker.filterByCountry(listOf(japanSlow, japanFast, usRelay), setOf("jp"))
+                .map { it.hostName }.toSet()
+        )
+        assertEquals(
+            "japan-fast",
+            ServerRanker.sort(listOf(japanSlow, japanFast), RelaySelectionMode.HIGHEST_SPEED).first().hostName
+        )
+    }
+
     private fun server(
         host: String,
         ping: Long = 10,
