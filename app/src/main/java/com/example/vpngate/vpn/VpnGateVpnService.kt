@@ -35,6 +35,7 @@ class VpnGateVpnService : VpnService() {
      */
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     @Volatile private var serviceDestroyed = false
+    // Accessed on the main thread; prevents onDestroy() racing an explicit disconnect.
 
     @androidx.annotation.Keep
     fun onNativeEvent(name: String, info: String, error: Boolean, fatal: Boolean) {
@@ -118,14 +119,26 @@ class VpnGateVpnService : VpnService() {
         }
     }
 
+    private var nativeStopInProgress = false
+
     private fun stopVpn() {
+        if (nativeStopInProgress) return
+        nativeStopInProgress = true
         VpnConnectionState.update(VpnUiState(VpnPhase.DISCONNECTING, message = "Disconnecting…"))
-        if (OpenVpn3Native.isCoreAvailable()) {
-            Thread { OpenVpn3Native.stop() }.start()
-        }
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        VpnConnectionState.update(VpnUiState())
-        stopSelf()
+
+        // Keep the service alive until OpenVPN has returned from connect() and
+        // released its TUN descriptor; do not report disconnected prematurely.
+        Thread {
+            if (OpenVpn3Native.isCoreAvailable()) OpenVpn3Native.stop()
+            mainHandler.post {
+                nativeStopInProgress = false
+                if (!serviceDestroyed) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    VpnConnectionState.update(VpnUiState())
+                    stopSelf()
+                }
+            }
+        }.start()
     }
 
     override fun onRevoke() {
@@ -136,7 +149,7 @@ class VpnGateVpnService : VpnService() {
 
     override fun onDestroy() {
         serviceDestroyed = true
-        if (OpenVpn3Native.isCoreAvailable()) {
+        if (!nativeStopInProgress && OpenVpn3Native.isCoreAvailable()) {
             Thread { OpenVpn3Native.stop() }.start()
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
