@@ -52,17 +52,6 @@ private fun VpnGateApp(activity: ComponentActivity) {
     var sourceUrlInput by remember { mutableStateOf("") }
     var sourceMessage by remember { mutableStateOf("") }
     var sourceItems by remember { mutableStateOf(repository.sources()) }
-    val profilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) runCatching {
-            val bytes = activity.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: error("Could not read selected profile")
-            repository.addProfileSource(sourceNameInput.ifBlank { "Imported profile" }, bytes)
-            bytes.fill(0)
-            sourceItems = repository.sources()
-            sourceMessage = "OpenVPN profile imported"
-            refresh()
-        }.onFailure { sourceMessage = it.message ?: "Could not import profile" }
-    }
     var pendingConnect by remember { mutableStateOf<Pair<VpnGateServer, ByteArray>?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val pending = pendingConnect
@@ -100,6 +89,18 @@ private fun VpnGateApp(activity: ComponentActivity) {
                 .onFailure { message = "Could not load relays: ${it.message}" }
             loading = false
         }
+    }
+
+    val profilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val bytes = activity.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("Could not read selected profile")
+            repository.addProfileSource(sourceNameInput.ifBlank { "Imported profile" }, bytes)
+            bytes.fill(0)
+            sourceItems = repository.sources()
+            sourceMessage = "OpenVPN profile imported"
+            refresh()
+        }.onFailure { sourceMessage = it.message ?: "Could not import profile" }
     }
 
     LaunchedEffect(Unit) { refresh() }
