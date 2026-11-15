@@ -52,12 +52,12 @@ private fun VpnGateApp(activity: ComponentActivity) {
     var sourceUrlInput by remember { mutableStateOf("") }
     var sourceMessage by remember { mutableStateOf("") }
     var sourceItems by remember { mutableStateOf(repository.sources()) }
-    var pendingConnect by remember { mutableStateOf<Pair<VpnGateServer, ByteArray>?>(null) }
+    var pendingConnect by remember { mutableStateOf<Triple<VpnGateServer, ByteArray, String?>?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val pending = pendingConnect
         pendingConnect = null
         if (result.resultCode == android.app.Activity.RESULT_OK && pending != null) {
-            runCatching { engine.connect(pending.first, pending.second) }
+            runCatching { engine.connect(pending.first, pending.second, pending.third) }
                 .onFailure { VpnConnectionState.update(com.example.vpngate.vpn.VpnUiState(VpnPhase.ERROR, pending.first.country, it.message ?: "Could not start VPN service")) }
             pending.second.fill(0)
         } else {
@@ -150,10 +150,10 @@ private fun VpnGateApp(activity: ComponentActivity) {
                                     .onSuccess { profileBytes ->
                                         val consentIntent = VpnService.prepare(activity)
                                         if (consentIntent != null) {
-                                            pendingConnect = server to profileBytes
+                                            pendingConnect = Triple(server, profileBytes, countryFilter.takeIf { it != "ALL" })
                                             permissionLauncher.launch(consentIntent)
                                         } else {
-                                            runCatching { engine.connect(server, profileBytes) }
+                                            runCatching { engine.connect(server, profileBytes, countryFilter.takeIf { it != "ALL" }) }
                                                 .onFailure { VpnConnectionState.update(com.example.vpngate.vpn.VpnUiState(VpnPhase.ERROR, server.country, it.message ?: "Could not start VPN service")) }
                                             profileBytes.fill(0)
                                         }
