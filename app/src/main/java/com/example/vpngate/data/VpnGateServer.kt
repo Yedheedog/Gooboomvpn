@@ -10,7 +10,10 @@ data class VpnGateServer(
     val countryCode: String,
     val sessions: Int,
     val uptime: Long,
-    val openVpnConfigBase64: String
+    val openVpnConfigBase64: String,
+    val sourceId: String = "vpngate-default",
+    val sourceName: String = "VPN Gate",
+    val isImportedProfile: Boolean = false
 ) {
     val displaySpeed: String get() = when {
         speedBps >= 1_000_000 -> "%.1f Mbps".format(speedBps / 1_000_000.0)
