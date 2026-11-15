@@ -61,8 +61,9 @@ internal class AndroidTunBuilder(
     }
 
     fun addDnsServer(address: String) = mutate {
-        require(address.isNotBlank()) { "DNS server address must not be blank." }
-        addDnsServer(address)
+        // DNS endpoints must be numeric literals; never trigger name resolution
+        // while the VPN interface is being assembled.
+        addDnsServer(parseNumericAddress(address))
     }
 
     fun addSearchDomain(domain: String) = mutate {
