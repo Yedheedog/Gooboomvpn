@@ -18,6 +18,7 @@ class NativeOpenVpn3Engine(private val context: Context) {
         val intent = Intent(context, VpnGateVpnService::class.java).apply {
             action = VpnGateVpnService.ACTION_CONNECT
             putExtra(VpnGateVpnService.EXTRA_SERVER, "${server.country} (${server.ip})")
+            putExtra(VpnGateVpnService.EXTRA_SERVER_IP, server.ip)
             putExtra(VpnGateVpnService.EXTRA_PROFILE, inlineProfile.copyOf())
         }
         context.startForegroundService(intent)
