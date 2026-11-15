@@ -127,7 +127,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
                             }
                         }
                     }, modifier = Modifier.fillMaxWidth().height(52.dp), enabled = !loading && (selected != null || vpnState.phase == VpnPhase.CONNECTED || vpnState.phase == VpnPhase.STARTING)) {
-                        Text(if (vpnState.phase == VpnPhase.CONNECTED || vpnState.phase == VpnPhase.STARTING) "DISCONNECT" else "CONNECT TO FASTEST")
+                        Text(if (vpnState.phase == VpnPhase.CONNECTED || vpnState.phase == VpnPhase.STARTING) "DISCONNECT" else selected?.let { "CONNECT TO ${it.country.uppercase()}" } ?: "CONNECT TO FASTEST")
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(vpnState.message, color = if (vpnState.phase == VpnPhase.ERROR) Color(0xFFFF8A80) else Color(0xFFFFC46B), style = MaterialTheme.typography.labelSmall)
