@@ -520,6 +520,7 @@ std::thread g_connect_worker;
 std::atomic<bool> g_connect_running{false};
 
 jstring make_java_string(JNIEnv *env, const std::string &value) {
+    if (env == nullptr) return nullptr;
     return env->NewStringUTF(value.c_str());
 }
 
