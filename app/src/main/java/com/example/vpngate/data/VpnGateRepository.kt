@@ -165,6 +165,11 @@ class VpnGateRepository(context: Context? = null) {
 
     internal fun parseCsv(csv: String, source: VpnSource): List<VpnGateServer> {
         val lines = csv.lineSequence().filter { it.isNotBlank() && !it.startsWith("*") }.toList()
+        if (lines.isEmpty()) return emptyList()
+        val header = parseCsvLine(lines.first())
+        require(header.any { it.equals("OpenVPN_ConfigData_Base64", ignoreCase = true) }) {
+            "Source ${source.name} is not a supported VPN Gate CSV list"
+        }
         if (lines.size < 2) return emptyList()
         val rows = lines.drop(1).mapNotNull(::parseCsvLine)
         return rows.mapNotNull { c ->
