@@ -588,6 +588,28 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeCoreAvailable(JNIEnv *, jobjec
     }
 }
 
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_example_vpngate_vpn_OpenVpn3Native_nativeTunStats(JNIEnv *env, jobject) {
+    jlong values[2] = {0, 0};
+    try {
+        std::shared_ptr<AndroidOpenVPNClient> client;
+        {
+            std::lock_guard<std::mutex> lock(g_client_mutex);
+            client = g_client;
+        }
+        if (client) {
+            const openvpn::ClientAPI::InterfaceStats stats = client->tun_stats();
+            values[0] = static_cast<jlong>(std::max(0LL, stats.bytesOut));
+            values[1] = static_cast<jlong>(std::max(0LL, stats.bytesIn));
+        }
+    } catch (...) {
+        // Keep telemetry non-fatal; a missing sample must never affect the tunnel.
+    }
+    jlongArray result = env->NewLongArray(2);
+    if (result != nullptr) env->SetLongArrayRegion(result, 0, 2, values);
+    return result;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
     JNIEnv *env, jobject, jobject service, jbyteArray profile_bytes) {
