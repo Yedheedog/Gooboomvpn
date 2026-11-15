@@ -89,7 +89,7 @@ hmac_source = hmac_path.read_text()
 cipher_source = cipher_path.read_text()
 
 hmac_include = "#include <openvpn/log/sessionstats.hpp>\n"
-hmac_include_new = hmac_include + "#include <atomic>\n"
+hmac_include_new = hmac_include + "#include <atomic>\n#include <string>\n"
 if hmac_include_new not in hmac_source:
     if hmac_include not in hmac_source:
         raise SystemExit("Unexpected decrypt_chm.hpp include block; refusing diagnostic patch")
