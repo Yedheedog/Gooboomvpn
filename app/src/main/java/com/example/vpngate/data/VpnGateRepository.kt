@@ -34,6 +34,10 @@ class VpnGateRepository(context: Context? = null) {
     private val appContext = context?.applicationContext
     private val preferences = appContext?.getSharedPreferences("vpn_sources_v1", Context.MODE_PRIVATE)
     private val client = OkHttpClient.Builder()
+        // Source URLs are required to be HTTPS. Do not silently follow a redirect to
+        // cleartext HTTP or an unreviewed alternate endpoint.
+        .followRedirects(false)
+        .followSslRedirects(false)
         .callTimeout(20, TimeUnit.SECONDS)
         .build()
 
