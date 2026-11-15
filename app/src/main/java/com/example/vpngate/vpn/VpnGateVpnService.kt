@@ -73,6 +73,7 @@ class VpnGateVpnService : VpnService() {
 
         when {
             name == "CONNECTED" -> {
+                runCatching { setUnderlyingNetworks(selectedUnderlyingNetwork?.let { arrayOf(it) }) }
                 VpnConnectionState.update(VpnUiState(VpnPhase.CONNECTED, message = "VPN tunnel connected"))
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, notification("Connected"))
@@ -136,8 +137,13 @@ class VpnGateVpnService : VpnService() {
 
         selectedUnderlyingNetwork = candidate
         runCatching { setUnderlyingNetworks(candidate?.let { arrayOf(it) }) }
-        if (previous != null && candidate != null && previous != candidate && nativeSessionActive) {
-            reconnectCurrentRelayForNetworkChange()
+        if (previous != candidate && nativeSessionActive) {
+            if (candidate == null) {
+                underlyingNetworkChangePending = true
+            } else if (previous != null || underlyingNetworkChangePending) {
+                underlyingNetworkChangePending = false
+                reconnectCurrentRelayForNetworkChange()
+            }
         }
     }
 
@@ -256,6 +262,7 @@ class VpnGateVpnService : VpnService() {
     private var networkRecoveryInProgress = false
     private val physicalNetworks = linkedMapOf<Network, NetworkCapabilities>()
     private var selectedUnderlyingNetwork: Network? = null
+    private var underlyingNetworkChangePending = false
     private var networkCallbackRegistered = false
 
     private val physicalNetworkCallback = object : ConnectivityManager.NetworkCallback() {
