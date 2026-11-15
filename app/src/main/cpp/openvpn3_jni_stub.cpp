@@ -152,7 +152,27 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         emit_event(event.name, event.info, event.error, event.fatal);
     }
     void acc_event(const openvpn::ClientAPI::AppCustomControlMessageEvent &) override {}
-    void log(const openvpn::ClientAPI::LogInfo &) override {}
+    void log(const openvpn::ClientAPI::LogInfo &info) override {
+        if (info.text.empty()) return;
+
+        // Keep native diagnostics local to Android logcat. Suppress records that
+        // could contain authentication material or inline key/certificate data.
+        std::string lowered = info.text;
+        std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (lowered.find("password") != std::string::npos ||
+            lowered.find("auth-token") != std::string::npos ||
+            lowered.find("auth_token") != std::string::npos ||
+            lowered.find("private key") != std::string::npos ||
+            lowered.find("-----begin") != std::string::npos) {
+            __android_log_write(ANDROID_LOG_WARN, "VPNGateOpenVPN",
+                                "[redacted sensitive OpenVPN log record]");
+            return;
+        }
+
+        const std::string safe_record = info.text.substr(0, 3500);
+        __android_log_write(ANDROID_LOG_INFO, "VPNGateOpenVPN", safe_record.c_str());
+    }
 
     void emit_status(const openvpn::ClientAPI::Status &status) {
         if (status.error) emit_event("CONNECT_RETURN", status.message, true, true);
