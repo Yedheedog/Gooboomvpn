@@ -33,11 +33,50 @@ internal class AndroidTunBuilder(
         setMtu(mtu)
     }
 
-    fun addAddress(address: String, prefixLength: Int) = mutate {
+    fun addAddress(
+        address: String,
+        prefixLength: Int,
+        gateway: String,
+        ipv6: Boolean,
+        net30: Boolean
+    ) = mutate {
         val parsedAddress = parseNumericAddress(address)
-        require(prefixLength in 0..(if (parsedAddress.address.size == 16) 128 else 32)) {
+        val addressIsIpv6 = parsedAddress.address.size == 16
+        require(addressIsIpv6 == ipv6) {
+            "OpenVPN address-family metadata does not match the interface address."
+        }
+        require(prefixLength in 0..(if (ipv6) 128 else 32)) {
             "Invalid address prefix length."
         }
+
+        if (gateway.isNotBlank()) {
+            val parsedGateway = parseNumericAddress(gateway)
+            require((parsedGateway.address.size == 16) == ipv6) {
+                "OpenVPN gateway address family does not match the interface address."
+            }
+        }
+
+        if (net30) {
+            require(!ipv6 && prefixLength == 30 && gateway.isNotBlank()) {
+                "OpenVPN net30 topology requires an IPv4 /30 address and peer."
+            }
+            val localBytes = parsedAddress.address
+            val peerBytes = parseNumericAddress(gateway).address
+            require(localBytes.size == 4 && peerBytes.size == 4) {
+                "OpenVPN net30 topology only supports IPv4."
+            }
+            require((localBytes[0].toInt() and 0xff) == (peerBytes[0].toInt() and 0xff) &&
+                (localBytes[1].toInt() and 0xff) == (peerBytes[1].toInt() and 0xff) &&
+                (localBytes[2].toInt() and 0xff) == (peerBytes[2].toInt() and 0xff) &&
+                ((localBytes[3].toInt() and 0xfc) == (peerBytes[3].toInt() and 0xfc)) &&
+                !localBytes.contentEquals(peerBytes)) {
+                "OpenVPN net30 local and peer addresses must be distinct members of the same /30."
+            }
+        }
+
+        // Android's Builder accepts the interface address/prefix but has no separate
+        // point-to-point peer parameter. Validate OpenVPN's gateway/topology metadata
+        // before applying the address; OpenVPN routes are installed by their own callbacks.
         addAddress(address, prefixLength)
     }
 
