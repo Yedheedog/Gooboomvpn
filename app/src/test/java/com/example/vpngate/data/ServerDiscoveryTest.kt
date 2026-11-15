@@ -73,6 +73,17 @@ class ServerDiscoveryTest {
     }
 
     @Test
+    fun importedProfilesRemainEligibleWithoutPublishedRelayMetrics() {
+        val imported = server(host = "imported-profile", ping = Long.MAX_VALUE, speed = 1)
+            .copy(isImportedProfile = true, countryCode = "--")
+
+        assertEquals(true, ServerRanker.isEligible(imported))
+        assertEquals("imported-profile", ServerRanker.sort(
+            listOf(imported), RelaySelectionMode.LOWEST_PING
+        ).single().hostName)
+    }
+
+    @Test
     fun failoverSkipsCurrentAndPreviouslyFailedRelaysUsingLowestPing() {
         val current = server(host = "current", ping = 5).copy(ip = "192.0.2.1")
         val failed = server(host = "failed", ping = 7).copy(ip = "192.0.2.2")
