@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -92,7 +93,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
                         list.isEmpty() -> "No OpenVPN relays found. Try again later."
                         sourceWarnings.isNotEmpty() ->
                             "${list.size} relays available; ${sourceWarnings.size} source(s) failed: ${sourceWarnings.joinToString("; ")}"
-                        else -> "${list.size} OpenVPN relays available"
+                        else -> ""
                     }
                 }
                 .onFailure { message = "Could not load relays: ${it.message}" }
@@ -179,16 +180,40 @@ private fun VpnGateApp(activity: ComponentActivity) {
                 }
             }
             Spacer(Modifier.height(12.dp))
+            var sortMenuExpanded by remember { mutableStateOf(false) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("AVAILABLE SERVERS", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("${servers.size} found", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                Box {
+                    TextButton(onClick = { sortMenuExpanded = true }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                        Text(
+                            when (sortMode) {
+                                RelaySelectionMode.LOWEST_PING -> "Lowest ping"
+                                RelaySelectionMode.HIGHEST_SPEED -> "Highest speed"
+                                RelaySelectionMode.BALANCED -> "Balanced"
+                            }
+                        )
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose server sorting")
+                    }
+                    DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Lowest ping") },
+                            onClick = { sortMode = RelaySelectionMode.LOWEST_PING; sortMenuExpanded = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Highest speed") },
+                            onClick = { sortMode = RelaySelectionMode.HIGHEST_SPEED; sortMenuExpanded = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Balanced") },
+                            onClick = { sortMode = RelaySelectionMode.BALANCED; sortMenuExpanded = false }
+                        )
+                    }
+                }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(message, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                FilterChip(selected = sortMode == RelaySelectionMode.LOWEST_PING, onClick = { sortMode = RelaySelectionMode.LOWEST_PING }, label = { Text("Lowest ping") })
-                FilterChip(selected = sortMode == RelaySelectionMode.HIGHEST_SPEED, onClick = { sortMode = RelaySelectionMode.HIGHEST_SPEED }, label = { Text("Highest speed") })
-                FilterChip(selected = sortMode == RelaySelectionMode.BALANCED, onClick = { sortMode = RelaySelectionMode.BALANCED }, label = { Text("Balanced") })
+            Text("${servers.size} OpenVPN relays available", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+            if (message.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(message, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 2)
             }
             if (availableCountries.isNotEmpty()) {
                 var expanded by remember { mutableStateOf(false) }
