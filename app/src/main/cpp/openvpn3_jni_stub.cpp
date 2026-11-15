@@ -246,9 +246,9 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
             // /0 route is not equivalent when the Android device already has
             // routing state that should remain the fallback.
             if ((flags & RG_DEF1) != 0) {
-                if (!call_string_int(route_method_, "0.0.0.0", 1)) return false;
-                if (!call_string_int(route_method_, "128.0.0.0", 1)) return false;
-            } else if (!call_string_int(route_method_, "0.0.0.0", 0)) {
+                if (!call_string_int_bool(route_method_, "0.0.0.0", 1, false)) return false;
+                if (!call_string_int_bool(route_method_, "128.0.0.0", 1, false)) return false;
+            } else if (!call_string_int_bool(route_method_, "0.0.0.0", 0, false)) {
                 return false;
             }
         }
@@ -404,20 +404,6 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
             return false;
         }
         env->CallVoidMethod(tun_builder_, method, text);
-        env->DeleteLocalRef(text);
-        return !clear_exception(env);
-    }
-
-    bool call_string_int(jmethodID method, const std::string &value, int number) {
-        ScopedJniEnv scoped(g_vm);
-        JNIEnv *env = scoped.get();
-        if (!ready(env) || method == nullptr) return false;
-        jstring text = env->NewStringUTF(value.c_str());
-        if (text == nullptr || env->ExceptionCheck()) {
-            clear_exception(env);
-            return false;
-        }
-        env->CallVoidMethod(tun_builder_, method, text, static_cast<jint>(number));
         env->DeleteLocalRef(text);
         return !clear_exception(env);
     }
