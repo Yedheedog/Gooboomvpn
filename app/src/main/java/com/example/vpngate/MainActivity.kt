@@ -163,6 +163,8 @@ private fun VpnGateApp(activity: ComponentActivity) {
             OutlinedButton(onClick = { showLogDialog = true }, modifier = Modifier.fillMaxWidth()) {
                 Text("VIEW / COPY DIAGNOSTIC LOG")
             }
+            Spacer(Modifier.height(8.dp))
+            Text("VPN Gate Connect — Build #${BuildConfig.BUILD_NUMBER}", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
     }
     if (showLogDialog) {
