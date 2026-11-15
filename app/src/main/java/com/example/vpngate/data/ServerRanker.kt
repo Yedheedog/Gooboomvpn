@@ -62,11 +62,12 @@ object ServerRanker {
 
     fun isEligible(server: VpnGateServer): Boolean =
         server.openVpnConfigBase64.isNotBlank() &&
+            (server.isImportedProfile || (
             server.speedBps > 0 &&
             server.pingMs >= 0 &&
             server.pingMs < Long.MAX_VALUE &&
             server.uptime >= 0 &&
-            server.sessions >= 0
+            server.sessions >= 0)
 
     private fun balancedScore(pingMs: Long, speedBps: Long): Double {
         // Normalize each metric to a practical range before combining them.
