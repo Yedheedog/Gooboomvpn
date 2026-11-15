@@ -38,6 +38,11 @@ class VpnGateVpnService : VpnService() {
     // Accessed on the main thread; prevents onDestroy() racing an explicit disconnect.
 
     @androidx.annotation.Keep
+    fun onNativeLog(message: String) {
+        NativeDiagnosticLog.append(message)
+    }
+
+    @androidx.annotation.Keep
     fun onNativeEvent(name: String, info: String, error: Boolean, fatal: Boolean) {
         mainHandler.post {
             if (serviceDestroyed) return@post
