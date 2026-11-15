@@ -41,12 +41,28 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun VpnGateApp(activity: ComponentActivity) {
-    val repository = remember { VpnGateRepository() }
+    val repository = remember { VpnGateRepository(activity.applicationContext) }
     val engine = remember { NativeOpenVpn3Engine(activity.applicationContext) }
     val vpnState by VpnConnectionState.state.collectAsState()
     val nativeLog by com.example.vpngate.vpn.NativeDiagnosticLog.text.collectAsState()
     val clipboardManager = LocalClipboardManager.current
     var showLogDialog by remember { mutableStateOf(false) }
+    var showSourceDialog by remember { mutableStateOf(false) }
+    var sourceNameInput by remember { mutableStateOf("") }
+    var sourceUrlInput by remember { mutableStateOf("") }
+    var sourceMessage by remember { mutableStateOf("") }
+    var sourceItems by remember { mutableStateOf(repository.sources()) }
+    val profilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val bytes = activity.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("Could not read selected profile")
+            repository.addProfileSource(sourceNameInput.ifBlank { "Imported profile" }, bytes)
+            bytes.fill(0)
+            sourceItems = repository.sources()
+            sourceMessage = "OpenVPN profile imported"
+            refresh()
+        }.onFailure { sourceMessage = it.message ?: "Could not import profile" }
+    }
     var pendingConnect by remember { mutableStateOf<Pair<VpnGateServer, ByteArray>?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val pending = pendingConnect
@@ -97,7 +113,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
                     Text("VPN GATE", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                     Text("OPENVPN RELAY CLIENT", style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
                 }
-                IconButton(onClick = { /* Source manager will be wired in the source-management change. */ }, enabled = true) { Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) }
+                IconButton(onClick = { sourceItems = repository.sources(); showSourceDialog = true }, enabled = true) { Text("+", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) }
                 IconButton(onClick = { refresh() }, enabled = !loading) { Icon(Icons.Default.Refresh, "Refresh") }
             }
             Spacer(Modifier.height(28.dp))
@@ -192,6 +208,40 @@ private fun VpnGateApp(activity: ComponentActivity) {
             Spacer(Modifier.height(8.dp))
             Text("VPN Gate Connect — Build #${BuildConfig.BUILD_NUMBER}", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
+    }
+    if (showSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showSourceDialog = false },
+            title = { Text("VPN sources") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Add a compatible HTTPS VPN Gate CSV server-list URL or import an .ovpn profile.")
+                    OutlinedTextField(value = sourceNameInput, onValueChange = { sourceNameInput = it }, label = { Text("Source name (optional)") }, singleLine = true)
+                    OutlinedTextField(value = sourceUrlInput, onValueChange = { sourceUrlInput = it }, label = { Text("HTTPS server-list URL") }, singleLine = true)
+                    Button(onClick = {
+                        runCatching { repository.addUrlSource(sourceNameInput, sourceUrlInput) }
+                            .onSuccess { sourceItems = repository.sources(); sourceUrlInput = ""; sourceNameInput = ""; sourceMessage = "Source added"; refresh() }
+                            .onFailure { sourceMessage = it.message ?: "Could not add source" }
+                    }, enabled = sourceUrlInput.isNotBlank()) { Text("ADD URL SOURCE") }
+                    OutlinedButton(onClick = { profilePicker.launch(arrayOf("application/x-openvpn-profile", "application/octet-stream", "text/plain")) }) { Text("IMPORT .OVPN PROFILE") }
+                    if (sourceMessage.isNotBlank()) Text(sourceMessage, color = MaterialTheme.colorScheme.primary)
+                    Divider()
+                    Text("Configured sources", fontWeight = FontWeight.Bold)
+                    if (sourceItems.isEmpty()) Text("No additional sources yet.")
+                    sourceItems.forEach { source ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(source.name, fontWeight = FontWeight.SemiBold)
+                                Text(source.kind.name.replace("_", " "), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            }
+                            Switch(checked = source.enabled, onCheckedChange = { enabled -> repository.setSourceEnabled(source.id, enabled); sourceItems = repository.sources(); refresh() })
+                            TextButton(onClick = { repository.removeSource(source.id); sourceItems = repository.sources(); refresh() }) { Text("REMOVE") }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSourceDialog = false }) { Text("DONE") } }
+        )
     }
     if (showLogDialog) {
         AlertDialog(
