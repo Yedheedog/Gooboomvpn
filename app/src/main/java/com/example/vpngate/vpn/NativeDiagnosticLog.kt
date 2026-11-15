@@ -18,14 +18,14 @@ object NativeDiagnosticLog {
     @Synchronized
     fun append(message: String) {
         val safeMessage = message
-            .replace("\\r", "")
+            .replace("\r", "")
             .trim()
             .take(MAX_ENTRY_CHARS)
         if (safeMessage.isEmpty()) return
 
-        val timestamped = "${java.util.Date()}  $safeMessage"
+        val timestamped = java.util.Date().toString() + "  " + safeMessage
         val current = mutableText.value
-        val lines = if (current.isEmpty()) emptyList() else current.split("\\n")
-        mutableText.value = (lines + timestamped).takeLast(MAX_ENTRIES).joinToString("\\n")
+        val lines = if (current.isEmpty()) emptyList() else current.split("\n")
+        mutableText.value = (lines + timestamped).takeLast(MAX_ENTRIES).joinToString("\n")
     }
 }
