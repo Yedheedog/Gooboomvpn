@@ -65,57 +65,49 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
   public:
     AndroidOpenVPNClient(JNIEnv *env, jobject service) {
         if (env == nullptr || service == nullptr) return;
+
         service_ = env->NewGlobalRef(service);
+        if (service_ == nullptr || clear_exception(env)) return;
 
         jclass service_class = env->GetObjectClass(service);
-        if (service_class != nullptr) {
-            protect_method_ = env->GetMethodID(service_class, "protectSocket", "(I)Z");
-            event_method_ = env->GetMethodID(
-                service_class, "onNativeEvent",
-                "(Ljava/lang/String;Ljava/lang/String;ZZ)V");
-            env->DeleteLocalRef(service_class);
-        }
+        if (service_class == nullptr || clear_exception(env)) return;
+        protect_method_ = lookup_method(env, service_class, "protectSocket", "(I)Z");
+        event_method_ = lookup_method(
+            service_class, "onNativeEvent",
+            "(Ljava/lang/String;Ljava/lang/String;ZZ)V");
+        env->DeleteLocalRef(service_class);
 
         // Resolve the Kotlin helper while called from the app's Java thread. The
         // class reference is global so callbacks on the native worker do not use
         // FindClass with the worker thread's (often boot) class loader.
         jclass local_builder_class =
             env->FindClass("com/example/vpngate/vpn/AndroidTunBuilder");
-        if (local_builder_class != nullptr) {
-            tun_builder_class_ =
-                static_cast<jclass>(env->NewGlobalRef(local_builder_class));
-            env->DeleteLocalRef(local_builder_class);
-        }
-        if (tun_builder_class_ != nullptr) {
-            tun_builder_ctor_ = env->GetMethodID(
-                tun_builder_class_, "<init>", "(Landroid/net/VpnService;)V");
-            session_method_ = env->GetMethodID(
-                tun_builder_class_, "setSessionName", "(Ljava/lang/String;)V");
-            mtu_method_ = env->GetMethodID(
-                tun_builder_class_, "setMtu", "(I)V");
-            address_method_ = env->GetMethodID(
-                tun_builder_class_, "addAddress",
-                "(Ljava/lang/String;ILjava/lang/String;ZZ)V");
-            route_method_ = env->GetMethodID(
-                tun_builder_class_, "addRoute", "(Ljava/lang/String;IZ)V");
-            exclude_route_method_ = env->GetMethodID(
-                tun_builder_class_, "excludeRoute", "(Ljava/lang/String;IZ)V");
-            dns_method_ = env->GetMethodID(
-                tun_builder_class_, "addDnsServer", "(Ljava/lang/String;)V");
-            search_domain_method_ = env->GetMethodID(
-                tun_builder_class_, "addSearchDomain", "(Ljava/lang/String;)V");
-            allow_family_method_ = env->GetMethodID(
-                tun_builder_class_, "setAllowFamily", "(IZ)V");
-            establish_method_ = env->GetMethodID(
-                tun_builder_class_, "establish", "()I");
-            close_method_ = env->GetMethodID(
-                tun_builder_class_, "close", "()V");
-        }
+        if (local_builder_class == nullptr || clear_exception(env)) return;
+        tun_builder_class_ =
+            static_cast<jclass>(env->NewGlobalRef(local_builder_class));
+        env->DeleteLocalRef(local_builder_class);
+        if (tun_builder_class_ == nullptr || clear_exception(env)) return;
 
-        if (env->ExceptionCheck()) {
-            env->ExceptionClear();
-            clear_method_ids();
-        }
+        tun_builder_ctor_ = lookup_method(
+            tun_builder_class_, "<init>", "(Landroid/net/VpnService;)V");
+        session_method_ = lookup_method(
+            tun_builder_class_, "setSessionName", "(Ljava/lang/String;)V");
+        mtu_method_ = lookup_method(env, tun_builder_class_, "setMtu", "(I)V");
+        address_method_ = lookup_method(
+            tun_builder_class_, "addAddress",
+            "(Ljava/lang/String;ILjava/lang/String;ZZ)V");
+        route_method_ = lookup_method(
+            tun_builder_class_, "addRoute", "(Ljava/lang/String;IZ)V");
+        exclude_route_method_ = lookup_method(
+            tun_builder_class_, "excludeRoute", "(Ljava/lang/String;IZ)V");
+        dns_method_ = lookup_method(
+            tun_builder_class_, "addDnsServer", "(Ljava/lang/String;)V");
+        search_domain_method_ = lookup_method(
+            tun_builder_class_, "addSearchDomain", "(Ljava/lang/String;)V");
+        allow_family_method_ = lookup_method(
+            tun_builder_class_, "setAllowFamily", "(IZ)V");
+        establish_method_ = lookup_method(tun_builder_class_, "establish", "()I");
+        close_method_ = lookup_method(tun_builder_class_, "close", "()V");
     }
 
     ~AndroidOpenVPNClient() override {
@@ -419,6 +411,17 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
             return true;
         }
         return false;
+    }
+
+    static jmethodID lookup_method(JNIEnv *env, jclass clazz,
+                                   const char *name, const char *signature) {
+        if (env == nullptr || clazz == nullptr) return nullptr;
+        const jmethodID method = env->GetMethodID(clazz, name, signature);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            return nullptr;
+        }
+        return method;
     }
 
     void clear_method_ids() {
