@@ -49,6 +49,10 @@ class VpnGateVpnService : VpnService() {
         // An explicit disconnect owns the state transition until nativeStop() has
         // joined the OpenVPN worker. Ignore late CONNECTED/terminal events meanwhile.
         if (nativeStopInProgress) return
+        if (name == "CONNECT_RETURN" || fatal || error ||
+            name == "EXITING" || name == "DISCONNECTED") {
+            nativeSessionActive = false
+        }
 
         when {
             name == "CONNECTED" -> {
@@ -108,6 +112,10 @@ class VpnGateVpnService : VpnService() {
             return
         }
 
+        // Duplicate CONNECT intents must not turn an already-running tunnel into an
+        // ERROR or stop its foreground service.
+        if (nativeSessionActive) return
+
         val server = intent.getStringExtra(EXTRA_SERVER) ?: "VPN Gate relay"
         val profile = intent.getByteArrayExtra(EXTRA_PROFILE)
         VpnConnectionState.update(VpnUiState(VpnPhase.STARTING, server, "Preparing secure connection…"))
@@ -120,8 +128,10 @@ class VpnGateVpnService : VpnService() {
             }
             val startError = OpenVpn3Native.start(this, profile)
             if (startError != null) throw IllegalStateException(startError)
+            nativeSessionActive = true
             // CONNECTED is set only by the native OpenVPN CONNECTED event callback.
         } catch (t: Throwable) {
+            nativeSessionActive = false
             VpnConnectionState.update(VpnUiState(VpnPhase.ERROR, server, t.message ?: "VPN startup failed"))
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf(startId)
@@ -133,6 +143,7 @@ class VpnGateVpnService : VpnService() {
     }
 
     private var nativeStopInProgress = false
+    private var nativeSessionActive = false
 
     private fun stopVpn() {
         if (nativeStopInProgress) return
@@ -145,6 +156,7 @@ class VpnGateVpnService : VpnService() {
             if (OpenVpn3Native.isCoreAvailable()) OpenVpn3Native.stop()
             mainHandler.post {
                 nativeStopInProgress = false
+                nativeSessionActive = false
                 if (!serviceDestroyed) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     VpnConnectionState.update(VpnUiState())
