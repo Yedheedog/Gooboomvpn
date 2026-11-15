@@ -113,6 +113,17 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         }
     }
 
+    bool callbacks_ready() const {
+        return service_ != nullptr && protect_method_ != nullptr &&
+               event_method_ != nullptr && tun_builder_class_ != nullptr &&
+               tun_builder_ctor_ != nullptr && session_method_ != nullptr &&
+               mtu_method_ != nullptr && address_method_ != nullptr &&
+               route_method_ != nullptr && exclude_route_method_ != nullptr &&
+               dns_method_ != nullptr && search_domain_method_ != nullptr &&
+               allow_family_method_ != nullptr && establish_method_ != nullptr &&
+               close_method_ != nullptr;
+    }
+
     bool pause_on_connection_timeout() override { return false; }
 
     void event(const openvpn::ClientAPI::Event &event) override {
@@ -430,6 +441,10 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
     std::fill(bytes.begin(), bytes.end(), 0);
 
     auto client = std::make_shared<AndroidOpenVPNClient>(env, service);
+    if (!client->callbacks_ready()) {
+        return make_java_string(env,
+            "Android VPN callbacks could not be initialized; refusing to start OpenVPN.");
+    }
     openvpn::ClientAPI::Config config;
     config.content = content;
     std::fill(content.begin(), content.end(), '\0');
