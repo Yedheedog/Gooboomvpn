@@ -10,6 +10,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 import java.util.UUID
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import java.util.concurrent.TimeUnit
 
 enum class VpnSourceKind { VPN_GATE_CSV, OPENVPN_PROFILE }
@@ -20,7 +27,7 @@ data class VpnSource(
     val kind: VpnSourceKind,
     val location: String,
     val enabled: Boolean = true,
-    val profileBase64: String = ""
+    val profileCiphertextBase64: String = ""
 )
 
 class VpnGateRepository(context: Context? = null) {
@@ -42,7 +49,7 @@ class VpnGateRepository(context: Context? = null) {
                     kind = VpnSourceKind.valueOf(item.getString("kind")),
                     location = item.getString("location"),
                     enabled = item.optBoolean("enabled", true),
-                    profileBase64 = item.optString("profile", "")
+                    profileCiphertextBase64 = item.optString("profileEncrypted", "")
                 )
             }.getOrNull()
         }
@@ -54,7 +61,7 @@ class VpnGateRepository(context: Context? = null) {
             array.put(JSONObject().apply {
                 put("id", source.id); put("name", source.name); put("kind", source.kind.name)
                 put("location", source.location); put("enabled", source.enabled)
-                if (source.profileBase64.isNotEmpty()) put("profile", source.profileBase64)
+                if (source.profileCiphertextBase64.isNotEmpty()) put("profileEncrypted", source.profileCiphertextBase64)
             })
         }
         preferences?.edit()?.putString("sources", array.toString())?.apply()
@@ -81,7 +88,7 @@ class VpnGateRepository(context: Context? = null) {
         val source = VpnSource(
             UUID.randomUUID().toString(), name.trim().ifBlank { "Imported profile" },
             VpnSourceKind.OPENVPN_PROFILE, "imported://${UUID.randomUUID()}",
-            profileBase64 = Base64.encodeToString(profile, Base64.NO_WRAP)
+            profileCiphertextBase64 = encryptProfile(profile)
         )
         saveSources(sources() + source)
         return source
@@ -119,18 +126,21 @@ class VpnGateRepository(context: Context? = null) {
     }
 
     private fun profileServer(source: VpnSource): VpnGateServer {
-        val decoded = Base64.decode(source.profileBase64, Base64.DEFAULT)
-        val text = decoded.toString(Charsets.UTF_8)
-        val remote = Regex("(?m)^\\s*remote\\s+(\\S+)\\s+(\\d+)").find(text)
-        return VpnGateServer(
-            hostName = source.name, ip = remote?.groupValues?.get(1) ?: "Imported profile",
-            score = 0, pingMs = Long.MAX_VALUE, speedBps = 1,
-            country = "Imported", countryCode = "--", sessions = 0, uptime = 0,
-            openVpnConfigBase64 = source.profileBase64, sourceId = source.id,
-            sourceName = source.name, isImportedProfile = true
-        )
+        val decoded = decryptProfile(source.profileCiphertextBase64)
+        return try {
+            val text = decoded.toString(Charsets.UTF_8)
+            val remote = Regex("(?m)^\\s*remote\\s+(\\S+)\\s+(\\d+)").find(text)
+            VpnGateServer(
+                hostName = source.name, ip = remote?.groupValues?.get(1) ?: "Imported profile",
+                score = 0, pingMs = Long.MAX_VALUE, speedBps = 1,
+                country = "Imported", countryCode = "--", sessions = 0, uptime = 0,
+                openVpnConfigBase64 = Base64.encodeToString(decoded, Base64.NO_WRAP), sourceId = source.id,
+                sourceName = source.name, isImportedProfile = true
+            )
+        } finally {
+            decoded.fill(0)
+        }
     }
-
     internal fun parseCsv(csv: String): List<VpnGateServer> = parseCsv(
         csv,
         VpnSource("vpngate-default", "VPN Gate", VpnSourceKind.VPN_GATE_CSV, "https://www.vpngate.net/api/iphone/")
@@ -173,6 +183,56 @@ class VpnGateRepository(context: Context? = null) {
         }
         out += field.toString()
         return out
+    }
+
+
+    private companion object {
+        private const val PROFILE_KEY_ALIAS = "vpn_gate_imported_profile_key"
+        private const val GCM_TAG_BITS = 128
+        private const val GCM_IV_BYTES = 12
+    }
+
+    /** Encrypt imported credentials at rest with a non-exportable Android Keystore key. */
+    private fun encryptProfile(plainText: ByteArray): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, profileKey())
+        val iv = cipher.iv
+        val encrypted = cipher.doFinal(plainText)
+        return Base64.encodeToString(iv + encrypted, Base64.NO_WRAP)
+    }
+
+    private fun decryptProfile(encoded: String): ByteArray {
+        val payload = Base64.decode(encoded, Base64.DEFAULT)
+        require(payload.size > GCM_IV_BYTES) { "Encrypted OpenVPN profile is incomplete" }
+        val iv = payload.copyOfRange(0, GCM_IV_BYTES)
+        val ciphertext = payload.copyOfRange(GCM_IV_BYTES, payload.size)
+        return try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, profileKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+            cipher.doFinal(ciphertext)
+        } finally {
+            payload.fill(0)
+            iv.fill(0)
+            ciphertext.fill(0)
+        }
+    }
+
+    private fun profileKey(): SecretKey {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (keyStore.getKey(PROFILE_KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                PROFILE_KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .build()
+        )
+        return generator.generateKey()
     }
 
     fun decodeProfile(server: VpnGateServer): ByteArray {
