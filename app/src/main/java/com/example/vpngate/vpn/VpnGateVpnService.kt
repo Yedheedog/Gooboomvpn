@@ -29,9 +29,21 @@ class VpnGateVpnService : VpnService() {
     @androidx.annotation.Keep
     fun protectSocket(fd: Int): Boolean = protect(fd)
 
-    /** Receives real OpenVPN 3 events from its native connection worker. */
+    /**
+     * Native OpenVPN callbacks arrive on its worker thread. Marshal Android service and
+     * notification lifecycle work onto the main thread, and ignore late events after teardown.
+     */
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
     @androidx.annotation.Keep
     fun onNativeEvent(name: String, info: String, error: Boolean, fatal: Boolean) {
+        mainHandler.post {
+            if (isDestroyed) return@post
+            handleNativeEvent(name, info, error, fatal)
+        }
+    }
+
+    private fun handleNativeEvent(name: String, info: String, error: Boolean, fatal: Boolean) {
         when {
             name == "CONNECTED" -> {
                 VpnConnectionState.update(VpnUiState(VpnPhase.CONNECTED, message = "VPN tunnel connected"))
