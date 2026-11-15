@@ -73,6 +73,17 @@ class ServerDiscoveryTest {
     }
 
     @Test
+    fun deduplicatesSameRelayAcrossDifferentSources() {
+        val builtIn = server(host = "same-relay").copy(sourceId = "vpngate-default", sourceName = "VPN Gate")
+        val custom = builtIn.copy(sourceId = "custom-source", sourceName = "Custom provider")
+
+        val result = VpnGateRepository().deduplicateServers(listOf(builtIn, custom))
+
+        assertEquals(1, result.size)
+        assertEquals("VPN Gate", result.single().sourceName)
+    }
+
+    @Test
     fun importedProfilesRemainEligibleWithoutPublishedRelayMetrics() {
         val imported = server(host = "imported-profile", ping = Long.MAX_VALUE, speed = 1)
             .copy(isImportedProfile = true, countryCode = "--")
