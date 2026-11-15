@@ -123,6 +123,9 @@ class VpnGateVpnService : VpnService() {
 
         try {
             require(profile != null && profile.isNotEmpty()) { "The selected relay returned an empty OpenVPN profile." }
+            check(VpnService.prepare(this) == null) {
+                "Android VPN permission is no longer granted. Reopen the app and approve the VPN permission prompt."
+            }
             if (!OpenVpn3Native.isCoreAvailable()) {
                 throw IllegalStateException("OpenVPN 3 native core is unavailable.")
             }
