@@ -225,10 +225,13 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         JNIEnv *env = scoped.get();
         if (!ready(env) || address_method_ == nullptr) return false;
         jstring jaddress = env->NewStringUTF(address.c_str());
-        jstring jgateway = env->NewStringUTF(gateway.c_str());
-        if (jaddress == nullptr || jgateway == nullptr || env->ExceptionCheck()) {
-            clear_exception(env);
+        if (clear_exception(env) || jaddress == nullptr) {
             if (jaddress != nullptr) env->DeleteLocalRef(jaddress);
+            return false;
+        }
+        jstring jgateway = env->NewStringUTF(gateway.c_str());
+        if (clear_exception(env) || jgateway == nullptr) {
+            env->DeleteLocalRef(jaddress);
             if (jgateway != nullptr) env->DeleteLocalRef(jgateway);
             return false;
         }
@@ -391,10 +394,13 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         JNIEnv *env = scoped.get();
         if (env == nullptr || service_ == nullptr || event_method_ == nullptr) return;
         jstring jname = env->NewStringUTF(name.c_str());
-        jstring jinfo = env->NewStringUTF(info.c_str());
-        if (jname == nullptr || jinfo == nullptr || env->ExceptionCheck()) {
-            clear_exception(env);
+        if (clear_exception(env) || jname == nullptr) {
             if (jname != nullptr) env->DeleteLocalRef(jname);
+            return;
+        }
+        jstring jinfo = env->NewStringUTF(info.c_str());
+        if (clear_exception(env) || jinfo == nullptr) {
+            env->DeleteLocalRef(jname);
             if (jinfo != nullptr) env->DeleteLocalRef(jinfo);
             return;
         }
