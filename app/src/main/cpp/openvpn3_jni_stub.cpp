@@ -10,7 +10,6 @@
 #include <sys/socket.h>
 
 #include "ovpncli.hpp"
-#include "openvpn/client/rgopt.hpp"
 
 namespace {
 
@@ -223,21 +222,23 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         // Android's Builder can install default routes, but this adapter does not
         // yet implement OpenVPN's DHCP/DNS bypass or block-local redirect flags.
         // Reject those policies instead of silently weakening the requested routing.
+        // Keep these bit values aligned with OpenVPN 3's RedirectGatewayFlags
+        // enum (rgopt.hpp), without including that header in this Android TU.
+        constexpr unsigned int RG_ENABLE = 1U << 0;
+        constexpr unsigned int RG_REROUTE_GW = 1U << 1;
+        constexpr unsigned int RG_LOCAL = 1U << 2;
+        constexpr unsigned int RG_AUTO_LOCAL = 1U << 3;
+        constexpr unsigned int RG_DEF1 = 1U << 4;
+        constexpr unsigned int RG_BYPASS_DHCP = 1U << 5;
+        constexpr unsigned int RG_BYPASS_DNS = 1U << 6;
+        constexpr unsigned int RG_BLOCK_LOCAL = 1U << 7;
+        constexpr unsigned int RG_IPv4 = 1U << 8;
+        constexpr unsigned int RG_IPv6 = 1U << 9;
         const unsigned int unsupported_flags =
-            openvpn::RedirectGatewayFlags::RG_BYPASS_DHCP |
-            openvpn::RedirectGatewayFlags::RG_BYPASS_DNS |
-            openvpn::RedirectGatewayFlags::RG_BLOCK_LOCAL;
+            RG_BYPASS_DHCP | RG_BYPASS_DNS | RG_BLOCK_LOCAL;
         const unsigned int known_flags =
-            openvpn::RedirectGatewayFlags::RG_ENABLE |
-            openvpn::RedirectGatewayFlags::RG_REROUTE_GW |
-            openvpn::RedirectGatewayFlags::RG_LOCAL |
-            openvpn::RedirectGatewayFlags::RG_AUTO_LOCAL |
-            openvpn::RedirectGatewayFlags::RG_DEF1 |
-            openvpn::RedirectGatewayFlags::RG_BYPASS_DHCP |
-            openvpn::RedirectGatewayFlags::RG_BYPASS_DNS |
-            openvpn::RedirectGatewayFlags::RG_BLOCK_LOCAL |
-            openvpn::RedirectGatewayFlags::RG_IPv4 |
-            openvpn::RedirectGatewayFlags::RG_IPv6;
+            RG_ENABLE | RG_REROUTE_GW | RG_LOCAL | RG_AUTO_LOCAL | RG_DEF1 |
+            RG_BYPASS_DHCP | RG_BYPASS_DNS | RG_BLOCK_LOCAL | RG_IPv4 | RG_IPv6;
         if ((flags & unsupported_flags) != 0 || (flags & ~known_flags) != 0) return false;
         if (ipv4 && !call_string_int(route_method_, "0.0.0.0", 0)) return false;
         if (ipv6 && !call_string_int(route_method_, "::", 0)) return false;
