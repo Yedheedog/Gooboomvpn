@@ -86,9 +86,9 @@ cipher = cipher_path.read_text()
 decrypt = decrypt_path.read_text()
 marker = "VPNGATE_DIAG"
 
-def patch_file(path, source, replacements):
+def patch_file(path, source, replacements, required_markers):
     if marker in source:
-        if not all(new_marker in source for _, _, new_marker in replacements):
+        if not all(required in source for required in required_markers):
             raise SystemExit(f"Partial diagnostic patch detected in {path}; refusing to continue")
         print(f"Diagnostic instrumentation already present in {path}")
         return source
@@ -214,8 +214,14 @@ decrypt_replacements = [
     'HMAC verification trace'
 )
 ]
-cipher = patch_file(cipher_path, cipher, cipher_replacements)
-decrypt = patch_file(decrypt_path, decrypt, decrypt_replacements)
+cipher = patch_file(
+    cipher_path, cipher, cipher_replacements,
+    ["diagnostic_cipher_name", "mbedtls_cipher_update algorithm=", "mbedtls_cipher_finish algorithm="]
+)
+decrypt = patch_file(
+    decrypt_path, decrypt, decrypt_replacements,
+    ["HMAC status=", "HMAC status=SKIPPED"]
+)
 PY
 
 echo "Pinned source fetch verified. The Android adapter still requires a successful native build and real-device connection test."
