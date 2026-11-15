@@ -492,10 +492,15 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
 
     const jsize length = env->GetArrayLength(profile_bytes);
     if (length <= 0) return make_java_string(env, "The OpenVPN profile is empty.");
+    const long max_profile_size = openvpn::ClientAPI::max_profile_size();
+    if (max_profile_size <= 0 || static_cast<long>(length) > max_profile_size) {
+        return make_java_string(env, "The OpenVPN profile exceeds the supported size limit.");
+    }
     std::vector<jbyte> bytes(static_cast<size_t>(length));
     env->GetByteArrayRegion(profile_bytes, 0, length, bytes.data());
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
+        std::fill(bytes.begin(), bytes.end(), 0);
         return make_java_string(env, "Could not read the OpenVPN profile.");
     }
     std::string content(reinterpret_cast<const char *>(bytes.data()), bytes.size());
