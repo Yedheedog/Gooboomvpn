@@ -17,11 +17,19 @@ object NativeDiagnosticLog {
 
     @Synchronized
     fun append(message: String) {
-        val safeMessage = message
-            .replace("\r", "")
-            .trim()
-            .take(MAX_ENTRY_CHARS)
-        if (safeMessage.isEmpty()) return
+        val candidate = message.replace("\r", "").trim().take(MAX_ENTRY_CHARS)
+        if (candidate.isEmpty()) return
+
+        val lowered = candidate.lowercase()
+        val sensitive = listOf(
+            "password", "username", "auth-user-pass", "auth-token",
+            "auth_token", "private key", "-----begin"
+        ).any { lowered.contains(it) }
+        val safeMessage = if (sensitive) {
+            "[redacted sensitive diagnostic record]"
+        } else {
+            candidate
+        }
 
         val timestamped = java.util.Date().toString() + "  " + safeMessage
         val current = mutableText.value
