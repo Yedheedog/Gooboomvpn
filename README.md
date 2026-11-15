@@ -17,19 +17,21 @@ CI runs relay-discovery unit tests and compiles Kotlin plus the native library f
 - Android TUN builder and protected transport sockets
 - Explicit connection-state reporting and reliable disconnect cleanup
 
-## Post-QC feature backlog
+## Feature implementation status
 
-These are planned enhancements to revisit after the core VPN passes quality control (QC):
+The feature branch `feature/readme-all-features` now contains the following coordinated implementation:
 
-- [ ] **Add VPN Source button:** place a plus (+) icon immediately to the left of the existing refresh button in the top app bar.
-- [ ] **Add provider/server-list URL:** let users add another VPN provider or compatible server-list source, then enable, disable, and remove individual sources.
-- [ ] **Import OpenVPN profile:** allow users to import an individual `.ovpn` configuration file as a VPN source, with source management controls.
-- [ ] **Multi-source server discovery:** combine servers from enabled sources and make the source/provider visible for each server; only include compatible and validated sources in automatic selection.
-- [ ] **Automatic failover:** move to another suitable relay when the active relay fails.
-- [ ] **Country filtering:** allow users to limit which countries are considered by fastest-server selection.
-- [ ] **Available-list sorting:** add a sort button directly below the Available section heading/list controls, with options for **Highest speed** (throughput descending) and **Lowest ping** (ping ascending); keep sorting separate from the automatic fastest-server selection policy.
-- [ ] **Improved server ranking:** supplement published VPN Gate metadata with measured connection performance where practical.
-- [ ] **Connection recovery:** handle Wi-Fi/mobile-data changes and reconnect safely.
+- [x] **Add VPN Source button:** the plus (+) icon is immediately to the left of Refresh.
+- [x] **Add provider/server-list URL:** users can add, enable, disable, and remove HTTPS VPN Gate-compatible CSV sources. Arbitrary provider formats are not yet supported.
+- [x] **Import OpenVPN profile:** individual `.ovpn` profiles can be imported and managed. Profile data is encrypted at rest with an Android Keystore AES-GCM key.
+- [x] **Multi-source server discovery:** enabled compatible CSV sources are combined with the built-in VPN Gate list, deduplicated, and labeled by source. Imported profiles appear as individual entries.
+- [x] **Automatic failover:** unexpected fatal or terminal relay events trigger up to three alternate relay attempts, excluding already-tried relays. Recovery keeps the service foreground and respects the active country filter.
+- [x] **Country filtering:** country restrictions apply to the displayed list, automatic selection, and failover candidates.
+- [x] **Available-list sorting:** Lowest ping, Highest speed, and Balanced sorting are separate from the default latency-first automatic selection.
+- [ ] **Improved server ranking:** live measured latency/throughput probes are not yet connected; current ranking uses published relay metadata.
+- [x] **Connection recovery:** the service monitors validated non-VPN networks, updates the VPN's underlying-network association, and restarts the current relay when the selected underlying network changes.
+
+These are source-level implementations on the feature branch, not a release claim. Android CI compilation/tests and physical-device testing are still required, especially for real failover, Wi-Fi/mobile transitions, and traffic-leak behavior.
 
 **UI placement note:** the Add VPN Source (+) icon belongs directly to the left of the refresh icon. Preserve the existing refresh action.
 
