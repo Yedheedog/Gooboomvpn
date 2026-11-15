@@ -14,6 +14,21 @@
 
 namespace {
 
+// Wipe sensitive buffers on every exit path, including exceptions and early returns.
+template <typename Container>
+class ScopedWipe {
+  public:
+    explicit ScopedWipe(Container &value) : value_(value) {}
+    ScopedWipe(const ScopedWipe &) = delete;
+    ScopedWipe &operator=(const ScopedWipe &) = delete;
+    ~ScopedWipe() {
+        std::fill(value_.begin(), value_.end(), typename Container::value_type{});
+    }
+
+  private:
+    Container &value_;
+};
+
 JavaVM *g_vm = nullptr;
 
 class ScopedJniEnv {
@@ -179,10 +194,16 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
             clear_exception(env);
             return false;
         }
-        tun_builder_ = env->NewGlobalRef(local);
+        jobject global = env->NewGlobalRef(local);
+        const bool allocation_failed = clear_exception(env);
         env->DeleteLocalRef(local);
+        if (allocation_failed || global == nullptr) {
+            if (global != nullptr) env->DeleteGlobalRef(global);
+            return false;
+        }
+        tun_builder_ = global;
         tun_builder_policy_error_ = false;
-        return tun_builder_ != nullptr && !env->ExceptionCheck();
+        return true;
     }
 
     bool tun_builder_set_layer(int layer) override { return layer == 3; }
@@ -508,14 +529,14 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
             return make_java_string(env, "The OpenVPN profile exceeds the supported size limit.");
         }
         std::vector<jbyte> bytes(static_cast<size_t>(length));
+        ScopedWipe<std::vector<jbyte>> wipe_bytes(bytes);
         env->GetByteArrayRegion(profile_bytes, 0, length, bytes.data());
         if (env->ExceptionCheck()) {
             env->ExceptionClear();
-            std::fill(bytes.begin(), bytes.end(), 0);
             return make_java_string(env, "Could not read the OpenVPN profile.");
         }
         std::string content(reinterpret_cast<const char *>(bytes.data()), bytes.size());
-        std::fill(bytes.begin(), bytes.end(), 0);
+        ScopedWipe<std::string> wipe_content(content);
     
         auto client = std::make_shared<AndroidOpenVPNClient>(env, service);
         if (!client->callbacks_ready()) {
@@ -524,14 +545,12 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         }
         openvpn::ClientAPI::Config config;
         config.content = content;
+        ScopedWipe<std::string> wipe_config_content(config.content);
         // VPN Gate profiles are commonly IPv4-only. Do not let the device keep using
         // an unused address family outside the tunnel, which would leak traffic.
         config.allowUnusedAddrFamilies = "no";
-        std::fill(content.begin(), content.end(), '\0');
     
         const openvpn::ClientAPI::EvalConfig evaluated = client->eval_config(config);
-        // The config copy can contain inline certificates and private-key material.
-        std::fill(config.content.begin(), config.content.end(), '\0');
         if (evaluated.error) {
             return make_java_string(env, evaluated.message.empty()
                 ? "OpenVPN rejected the selected profile." : evaluated.message);
@@ -549,10 +568,10 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
             credentials.username = evaluated.userlockedUsername.empty()
                 ? "vpn" : evaluated.userlockedUsername;
             credentials.password = "vpn";
+            ScopedWipe<std::string> wipe_username(credentials.username);
+            ScopedWipe<std::string> wipe_password(credentials.password);
             const openvpn::ClientAPI::Status credential_status =
                 client->provide_creds(credentials);
-            std::fill(credentials.username.begin(), credentials.username.end(), '\0');
-            std::fill(credentials.password.begin(), credentials.password.end(), '\0');
             if (credential_status.error) {
                 return make_java_string(env, credential_status.message.empty()
                     ? "OpenVPN rejected the VPN Gate relay credentials."
