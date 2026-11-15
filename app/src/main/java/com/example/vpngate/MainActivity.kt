@@ -84,8 +84,11 @@ private fun VpnGateApp(activity: ComponentActivity) {
             loading = true; message = "Fetching VPN Gate relay list…"
             runCatching { repository.fetchServers() }
                 .onSuccess { list ->
+                    val previouslySelectedIp = selected?.ip
                     servers = list
-                    selected = ServerRanker.fastest(list)
+                    // Refreshing sources should not silently discard the user's manual relay choice.
+                    selected = list.firstOrNull { it.ip == previouslySelectedIp }
+                        ?: ServerRanker.fastest(list)
                     message = if (list.isEmpty()) "No OpenVPN relays found. Try again later." else "${list.size} OpenVPN relays available"
                 }
                 .onFailure { message = "Could not load relays: ${it.message}" }
