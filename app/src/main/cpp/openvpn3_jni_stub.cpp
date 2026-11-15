@@ -623,21 +623,34 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
             g_connect_running.store(true);
             try {
                 g_connect_worker = std::thread([client]() {
+                    struct RunningFlagReset {
+                        ~RunningFlagReset() {
+                            g_connect_running.store(false, std::memory_order_release);
+                        }
+                    } reset_running_flag;
+
                     try {
                         const openvpn::ClientAPI::Status status = client->connect();
                         client->emit_status(status);
                     } catch (const std::exception &e) {
-                        openvpn::ClientAPI::Status failure;
-                        failure.error = true;
-                        failure.message = std::string("OpenVPN worker exception: ") + e.what();
-                        client->emit_status(failure);
+                        // Keep all exceptions inside the worker boundary. Even error
+                        // reporting can allocate, so guard that path as well.
+                        try {
+                            openvpn::ClientAPI::Status failure;
+                            failure.error = true;
+                            failure.message = std::string("OpenVPN worker exception: ") + e.what();
+                            client->emit_status(failure);
+                        } catch (...) {
+                        }
                     } catch (...) {
-                        openvpn::ClientAPI::Status failure;
-                        failure.error = true;
-                        failure.message = "OpenVPN worker failed with an unknown native exception.";
-                        client->emit_status(failure);
+                        try {
+                            openvpn::ClientAPI::Status failure;
+                            failure.error = true;
+                            failure.message = "OpenVPN worker failed with an unknown native exception.";
+                            client->emit_status(failure);
+                        } catch (...) {
+                        }
                     }
-                    g_connect_running.store(false);
                 });
             } catch (const std::exception &e) {
                 g_connect_running.store(false);
