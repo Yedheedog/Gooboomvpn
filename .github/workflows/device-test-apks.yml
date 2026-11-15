@@ -71,6 +71,10 @@ jobs:
           test -s "$DEBUG_APK"
           test -s "$RELEASE_APK"
 
+          NUMBERED_DEBUG_APK="$(dirname "$DEBUG_APK")/VPN-Gate-Connect-debug-build-${GITHUB_RUN_NUMBER}.apk"
+          mv "$DEBUG_APK" "$NUMBERED_DEBUG_APK"
+          DEBUG_APK="$NUMBERED_DEBUG_APK"
+
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
 
