@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shield
@@ -19,6 +22,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.vpngate.data.*
@@ -39,6 +44,9 @@ private fun VpnGateApp(activity: ComponentActivity) {
     val repository = remember { VpnGateRepository() }
     val engine = remember { NativeOpenVpn3Engine(activity.applicationContext) }
     val vpnState by VpnConnectionState.state.collectAsState()
+    val nativeLog by com.example.vpngate.vpn.NativeDiagnosticLog.text.collectAsState()
+    val clipboardManager = LocalClipboardManager.current
+    var showLogDialog by remember { mutableStateOf(false) }
     var pendingConnect by remember { mutableStateOf<Pair<VpnGateServer, ByteArray>?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val pending = pendingConnect
@@ -151,6 +159,34 @@ private fun VpnGateApp(activity: ComponentActivity) {
             }
             if (servers.isEmpty() && !loading) OutlinedButton(onClick = { refresh() }, modifier = Modifier.fillMaxWidth()) { Text("LOAD SERVERS") }
             Text("VPN Gate relays are volunteer-operated. Avoid sensitive traffic on public relays.", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { showLogDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("VIEW / COPY DIAGNOSTIC LOG")
+            }
         }
     }
+    if (showLogDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogDialog = false },
+            title = { Text("OpenVPN diagnostic log") },
+            text = {
+                SelectionContainer {
+                    Text(
+                        nativeLog.ifBlank { "No native OpenVPN logs captured yet. Start a connection attempt, then reopen this screen." },
+                        modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { clipboardManager.setText(AnnotatedString(nativeLog)) }) {
+                    Text("COPY LOG")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogDialog = false }) { Text("CLOSE") }
+            }
+        )
+    }
+
 }
