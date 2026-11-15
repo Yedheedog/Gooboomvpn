@@ -23,7 +23,7 @@ object NativeDiagnosticLog {
             .take(MAX_ENTRY_CHARS)
         if (safeMessage.isEmpty()) return
 
-        val timestamped = "${System.currentTimeMillis()}  $safeMessage"
+        val timestamped = "${java.util.Date()}  $safeMessage"
         val current = mutableText.value
         val lines = if (current.isEmpty()) emptyList() else current.split("\\n")
         mutableText.value = (lines + timestamped).takeLast(MAX_ENTRIES).joinToString("\\n")
