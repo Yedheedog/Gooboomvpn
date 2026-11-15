@@ -226,10 +226,10 @@ class VpnGateVpnService : VpnService() {
 
                 automaticFailoverAttempts += 1
                 activeServerIp = selected.ip
-                activeServerLabel = "\${selected.country} (\${selected.ip})"
+                activeServerLabel = "${selected.country} (${selected.ip})"
                 attemptedServerIps.add(selected.ip)
                 VpnConnectionState.update(
-                    VpnUiState(VpnPhase.STARTING, activeServerLabel, "Trying alternate relay $automaticFailoverAttempts/\${ServerRanker.MAX_AUTOMATIC_FAILOVER_ATTEMPTS}…")
+                    VpnUiState(VpnPhase.STARTING, activeServerLabel, "Trying alternate relay $automaticFailoverAttempts/${ServerRanker.MAX_AUTOMATIC_FAILOVER_ATTEMPTS}…")
                 )
                 try {
                     val startError = OpenVpn3Native.start(this, profileBytes)
