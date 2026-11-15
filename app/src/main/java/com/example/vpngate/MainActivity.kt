@@ -39,6 +39,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun formatTraffic(bytes: Long): String {
+    val value = bytes.coerceAtLeast(0L).toDouble()
+    return when {
+        value >= 1024.0 * 1024 * 1024 -> String.format("%.2f GB", value / (1024.0 * 1024 * 1024))
+        value >= 1024.0 * 1024 -> String.format("%.1f MB", value / (1024.0 * 1024))
+        value >= 1024.0 -> String.format("%.1f KB", value / 1024.0)
+        else -> "${bytes.coerceAtLeast(0L)} B"
+    }
+}
+
 @Composable
 private fun VpnGateApp(activity: ComponentActivity) {
     val repository = remember { VpnGateRepository(activity.applicationContext) }
@@ -150,6 +160,12 @@ private fun VpnGateApp(activity: ComponentActivity) {
                         Column(Modifier.weight(1f)) {
                             Text(vpnState.serverLabel ?: selected?.country ?: "Automatic server", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(selected?.let { "${it.pingMs} ms  •  ${it.displaySpeed}" } ?: "Fastest available relay", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                            if (vpnState.phase == VpnPhase.CONNECTED) {
+                                Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    Text("↓ Downloaded  ${formatTraffic(vpnState.downloadedBytes)}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                                    Text("↑ Uploaded  ${formatTraffic(vpnState.uploadedBytes)}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
                             Text(vpnState.message, color = if (vpnState.phase == VpnPhase.ERROR) Color(0xFFFF8A80) else Color(0xFFFFC46B), style = MaterialTheme.typography.labelSmall, maxLines = 1)
                         }
                     }
