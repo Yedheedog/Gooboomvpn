@@ -9,7 +9,9 @@ enum class VpnPhase { IDLE, STARTING, CONNECTED, DISCONNECTING, ERROR }
 data class VpnUiState(
     val phase: VpnPhase = VpnPhase.IDLE,
     val serverLabel: String? = null,
-    val message: String = "Choose a VPN Gate relay to connect"
+    val message: String = "Choose a VPN Gate relay to connect",
+    val uploadedBytes: Long = 0L,
+    val downloadedBytes: Long = 0L
 )
 
 /** In-process state channel shared by the foreground service and Compose UI. */
