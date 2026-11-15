@@ -7,12 +7,14 @@ import org.junit.Test
 class ServerDiscoveryTest {
     @Test
     fun parsesQuotedCsvFieldsAndIgnoresCommentLines() {
-        val csv = """
-            *vpn_servers
-            HostName,IP,Score,Ping,Speed,CountryLong,CountryShort,NumVpnSessions,Uptime,TotalUsers,TotalTraffic,LogType,Operator,Message,OpenVPN_ConfigData_Base64
-            jp.example,192.0.2.10,10,12,1000000,"Japan, East",JP,3,900,4,5,0,operator,"hello, ""world""",cHJvZmlsZQ==
-            malformed,row
-        """.trimIndent()
+        // Use a regular Kotlin string so the CSV's doubled quote escape does not
+        // accidentally terminate a triple-quoted Kotlin raw string.
+        val csv = listOf(
+            "*vpn_servers",
+            "HostName,IP,Score,Ping,Speed,CountryLong,CountryShort,NumVpnSessions,Uptime,TotalUsers,TotalTraffic,LogType,Operator,Message,OpenVPN_ConfigData_Base64",
+            "jp.example,192.0.2.10,10,12,1000000,\"Japan, East\",JP,3,900,4,5,0,operator,\"hello, \"\"world\"\"\",cHJvZmlsZQ==",
+            "malformed,row"
+        ).joinToString("\n")
 
         val servers = VpnGateRepository().parseCsv(csv)
 
