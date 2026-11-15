@@ -39,6 +39,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun formatDuration(totalSeconds: Long): String {
+    val seconds = totalSeconds.coerceAtLeast(0L)
+    val hours = seconds / 3600L
+    val minutes = (seconds % 3600L) / 60L
+    val remainder = seconds % 60L
+    return if (hours > 0L) "%d:%02d:%02d".format(hours, minutes, remainder)
+    else "%02d:%02d".format(minutes, remainder)
+}
+
 private fun formatTraffic(bytes: Long): String {
     val value = bytes.coerceAtLeast(0L).toDouble()
     return when {
@@ -164,6 +173,7 @@ private fun VpnGateApp(activity: ComponentActivity) {
                                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                                     Text("↓ Downloaded  ${formatTraffic(vpnState.downloadedBytes)}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                                     Text("↑ Uploaded  ${formatTraffic(vpnState.uploadedBytes)}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                                    Text("◷ ${formatDuration(vpnState.sessionDurationSeconds)}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                             Text(vpnState.message, color = if (vpnState.phase == VpnPhase.ERROR) Color(0xFFFF8A80) else Color(0xFFFFC46B), style = MaterialTheme.typography.labelSmall, maxLines = 1)
