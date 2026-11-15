@@ -175,7 +175,6 @@ new_update = """        size_t outlen;
             out_acc += outlen;
             return true;
         }
-        OPENVPN_LOG(std::string("DIAG_CIPHER: mbedtls_cipher_update failure | ret=") + std::to_string(diag_ret) + " in_size=" + std::to_string(in_size));
         return false;
 """
 if new_update not in cipher_source:
@@ -199,7 +198,6 @@ new_final = """        size_t outlen;
             out_acc += outlen;
             return true;
         }
-        OPENVPN_LOG(std::string("DIAG_CIPHER: mbedtls_cipher_finish failure | ret=") + std::to_string(diag_ret));
         return false;
 """
 if new_final not in cipher_source:
