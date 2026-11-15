@@ -1,6 +1,7 @@
 name: Device-test APK build
 
 # Device-test builds package both variants after source checks pass.
+# Diagnostic builds use the same verified package and embed the Actions run number.
 on:
   workflow_dispatch:
   push:
