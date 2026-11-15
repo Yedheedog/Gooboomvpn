@@ -89,11 +89,25 @@ hmac_source = hmac_path.read_text()
 cipher_source = cipher_path.read_text()
 
 hmac_include = "#include <openvpn/log/sessionstats.hpp>\n"
-hmac_include_new = hmac_include + "#include <openvpn/log/logbase.hpp>\n#include <atomic>\n"
+hmac_include_new = hmac_include + "#include <atomic>\n"
 if hmac_include_new not in hmac_source:
     if hmac_include not in hmac_source:
         raise SystemExit("Unexpected decrypt_chm.hpp include block; refusing diagnostic patch")
     hmac_source = hmac_source.replace(hmac_include, hmac_include_new, 1)
+
+worker_anchor = """        // skip null packets
+        if (buf.empty())
+            return Error::SUCCESS;
+"""
+worker_replacement = """        // skip null packets
+        if (buf.empty())
+            return Error::SUCCESS;
+
+        // Verify that this packet-processing thread inherited the OpenVPN log context.
+        static std::atomic_flag diag_worker_marker_emitted = ATOMIC_FLAG_INIT;
+        if (!diag_worker_marker_emitted.test_and_set(std::memory_order_relaxed))
+            OPENVPN_LOG("DIAG_WORKER_TEST: OpenVPN data-channel worker logging context reached decrypt().");
+"""
 
 hmac_anchor = """        // verify the HMAC
         if (hmac.defined())
@@ -140,12 +154,10 @@ if hmac_replacement not in hmac_source:
         raise SystemExit("Unexpected decrypt_chm.hpp HMAC block; refusing diagnostic patch")
     hmac_source = hmac_source.replace(hmac_anchor, hmac_replacement, 1)
 
-cipher_include = "#include <openvpn/crypto/cryptoalgs.hpp>\n"
-cipher_include_new = cipher_include + "#include <openvpn/log/logbase.hpp>\n"
-if cipher_include_new not in cipher_source:
-    if cipher_include not in cipher_source:
-        raise SystemExit("Unexpected mbedTLS cipher include block; refusing diagnostic patch")
-    cipher_source = cipher_source.replace(cipher_include, cipher_include_new, 1)
+if worker_replacement not in hmac_source:
+    if worker_anchor not in hmac_source:
+        raise SystemExit("Unexpected decrypt_chm.hpp decrypt entry; refusing worker marker patch")
+    hmac_source = hmac_source.replace(worker_anchor, worker_replacement, 1)
 
 old_update = """        size_t outlen;
         if (mbedtls_cipher_update(&ctx, in, in_size, out, &outlen) >= 0)
