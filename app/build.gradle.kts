@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.vpngate"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "1.0.0"
         buildConfigField("int", "BUILD_NUMBER", providers.environmentVariable("GITHUB_RUN_NUMBER").orElse("0").get())
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild { cmake { cppFlags += "-std=c++20" } }
