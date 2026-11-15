@@ -104,8 +104,8 @@ def patch_file(path, source, replacements, required_markers):
 cipher_replacements = [
 (
     '#include <string>\n\n#include <mbedtls/cipher.h>\n',
-    '#include <string>\n#include <atomic>\n\n#include <mbedtls/cipher.h>\n#include <openvpn/log/logbase.hpp>\n',
-    '#include <openvpn/log/logbase.hpp>'
+    '#include <string>\n#include <atomic>\n\n#include <mbedtls/cipher.h>\n#include <android/log.h>\n',
+    '#include <android/log.h>'
 ),
 (
     '    bool initialized = false;\n    mbedtls_cipher_context_t ctx;\n',
@@ -132,8 +132,9 @@ cipher_replacements = [
         static std::atomic<unsigned int> trace_count{0};
         const unsigned int trace_index = trace_count.fetch_add(1, std::memory_order_relaxed);
         if (trace_index < 16 || ret < 0)
-            OPENVPN_LOG("VPNGATE_DIAG mbedtls_cipher_update algorithm=" << diagnostic_cipher_name
-                        << " input_len=" << in_size << " return=" << ret << " output_len=" << outlen);
+            __android_log_print(ANDROID_LOG_WARN, "VPNGateDiag",
+                                "VPNGATE_DIAG mbedtls_cipher_update algorithm=%s input_len=%zu return=%d output_len=%zu",
+                                diagnostic_cipher_name, in_size, ret, outlen);
         if (ret >= 0)
         {
             out_acc += outlen;
@@ -159,8 +160,9 @@ cipher_replacements = [
         static std::atomic<unsigned int> trace_count{0};
         const unsigned int trace_index = trace_count.fetch_add(1, std::memory_order_relaxed);
         if (trace_index < 16 || ret < 0)
-            OPENVPN_LOG("VPNGATE_DIAG mbedtls_cipher_finish algorithm=" << diagnostic_cipher_name
-                        << " return=" << ret << " output_len=" << outlen);
+            __android_log_print(ANDROID_LOG_WARN, "VPNGateDiag",
+                                "VPNGATE_DIAG mbedtls_cipher_finish algorithm=%s return=%d output_len=%zu",
+                                diagnostic_cipher_name, ret, outlen);
         if (ret >= 0)
         {
             out_acc += outlen;
@@ -175,8 +177,8 @@ cipher_replacements = [
 decrypt_replacements = [
 (
     '#include <cstring>\n',
-    '#include <cstring>\n#include <atomic>\n\n#include <openvpn/log/logbase.hpp>\n',
-    '#include <openvpn/log/logbase.hpp>'
+    '#include <cstring>\n#include <atomic>\n\n#include <android/log.h>\n',
+    '#include <android/log.h>'
 ),
 (
     '''            hmac.hmac(local_hmac, hmac_size, buf.c_data(), buf.size());
@@ -194,8 +196,9 @@ decrypt_replacements = [
             static std::atomic<unsigned int> hmac_trace_count{0};
             const unsigned int hmac_trace_index = hmac_trace_count.fetch_add(1, std::memory_order_relaxed);
             if (hmac_trace_index < 16 || hmac_failed)
-                OPENVPN_LOG("VPNGATE_DIAG HMAC status=" << (hmac_failed ? "FAILURE" : "SUCCESS")
-                            << " tag_len=" << hmac_size << " authenticated_len=" << buf.size());
+                __android_log_print(ANDROID_LOG_WARN, "VPNGateDiag",
+                                    "VPNGATE_DIAG HMAC status=%s tag_len=%zu authenticated_len=%zu",
+                                    hmac_failed ? "FAILURE" : "SUCCESS", hmac_size, buf.size());
             if (hmac_failed)
             {
                 buf.reset_size();
@@ -206,7 +209,7 @@ decrypt_replacements = [
         {
             static std::atomic<unsigned int> hmac_skip_trace_count{0};
             if (hmac_skip_trace_count.fetch_add(1, std::memory_order_relaxed) < 16)
-                OPENVPN_LOG("VPNGATE_DIAG HMAC status=SKIPPED");
+                __android_log_print(ANDROID_LOG_WARN, "VPNGateDiag", "VPNGATE_DIAG HMAC status=SKIPPED");
         }
 
         // decrypt packet ID + payload
