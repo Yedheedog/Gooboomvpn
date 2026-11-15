@@ -89,7 +89,15 @@ private fun VpnGateApp(activity: ComponentActivity) {
                     // Refreshing sources should not silently discard the user's manual relay choice.
                     selected = list.firstOrNull { it.ip == previouslySelectedIp }
                         ?: ServerRanker.fastest(list)
-                    message = if (list.isEmpty()) "No OpenVPN relays found. Try again later." else "${list.size} OpenVPN relays available"
+                    val sourceWarnings = repository.lastFetchWarnings
+                    message = when {
+                        list.isEmpty() && sourceWarnings.isNotEmpty() ->
+                            "No relays loaded. Source errors: ${sourceWarnings.joinToString("; ")}"
+                        list.isEmpty() -> "No OpenVPN relays found. Try again later."
+                        sourceWarnings.isNotEmpty() ->
+                            "${list.size} relays available; ${sourceWarnings.size} source(s) failed: ${sourceWarnings.joinToString("; ")}"
+                        else -> "${list.size} OpenVPN relays available"
+                    }
                 }
                 .onFailure { message = "Could not load relays: ${it.message}" }
             loading = false
