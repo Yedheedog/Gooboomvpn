@@ -44,13 +44,15 @@ class VpnGateVpnService : VpnService() {
      * notification lifecycle work onto the main thread, and ignore late events after teardown.
      */
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var connectedAtElapsedRealtime: Long = 0L
     private val trafficStatsPoll = object : Runnable {
         override fun run() {
             if (serviceDestroyed || !nativeSessionActive || userRequestedDisconnect) return
             val stats = runCatching { OpenVpn3Native.tunStats() }.getOrDefault(longArrayOf(0L, 0L))
             if (stats.size >= 2) {
                 val current = VpnConnectionState.state.value
-                VpnConnectionState.update(current.copy(uploadedBytes = stats[0], downloadedBytes = stats[1]))
+                val duration = if (connectedAtElapsedRealtime > 0L) ((android.os.SystemClock.elapsedRealtime() - connectedAtElapsedRealtime) / 1000L).coerceAtLeast(0L) else 0L
+                VpnConnectionState.update(current.copy(uploadedBytes = stats[0], downloadedBytes = stats[1], sessionDurationSeconds = duration))
             }
             mainHandler.postDelayed(this, 1000L)
         }
@@ -86,6 +88,7 @@ class VpnGateVpnService : VpnService() {
 
         when {
             name == "CONNECTED" -> {
+                if (connectedAtElapsedRealtime == 0L) connectedAtElapsedRealtime = android.os.SystemClock.elapsedRealtime()
                 runCatching { setUnderlyingNetworks(selectedUnderlyingNetwork?.let { arrayOf(it) }) }
                 VpnConnectionState.update(VpnConnectionState.state.value.copy(phase = VpnPhase.CONNECTED, serverLabel = activeServerLabel, message = "VPN tunnel connected"))
                 mainHandler.removeCallbacks(trafficStatsPoll)
@@ -227,6 +230,7 @@ class VpnGateVpnService : VpnService() {
         if (nativeSessionActive) return
 
         userRequestedDisconnect = false
+        connectedAtElapsedRealtime = 0L
         VpnConnectionState.update(VpnUiState(VpnPhase.STARTING, message = "Preparing secure connection…"))
         attemptedServerIps.clear()
         automaticFailoverAttempts = 0
