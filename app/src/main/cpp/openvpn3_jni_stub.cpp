@@ -73,7 +73,7 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
         if (service_class == nullptr || clear_exception(env)) return;
         protect_method_ = lookup_method(env, service_class, "protectSocket", "(I)Z");
         event_method_ = lookup_method(
-            service_class, "onNativeEvent",
+            env, service_class, "onNativeEvent",
             "(Ljava/lang/String;Ljava/lang/String;ZZ)V");
         env->DeleteLocalRef(service_class);
 
