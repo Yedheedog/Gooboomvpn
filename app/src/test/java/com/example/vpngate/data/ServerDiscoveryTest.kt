@@ -72,6 +72,35 @@ class ServerDiscoveryTest {
         )
     }
 
+    @Test
+    fun failoverSkipsCurrentAndPreviouslyFailedRelaysUsingLowestPing() {
+        val current = server(host = "current", ping = 5).copy(ip = "192.0.2.1")
+        val failed = server(host = "failed", ping = 7).copy(ip = "192.0.2.2")
+        val next = server(host = "next", ping = 18).copy(ip = "192.0.2.3")
+        val fastest = server(host = "fastest", ping = 2).copy(ip = "192.0.2.4")
+
+        val candidate = ServerRanker.nextFailoverCandidate(
+            listOf(current, failed, next, fastest),
+            currentServerIp = current.ip,
+            attemptedServerIps = setOf(failed.ip)
+        )
+
+        assertEquals("fastest", candidate?.hostName)
+        assertEquals(3, ServerRanker.MAX_AUTOMATIC_FAILOVER_ATTEMPTS)
+    }
+
+    @Test
+    fun failoverReturnsNullWhenNoUntriedEligibleRelayRemains() {
+        val first = server(host = "first").copy(ip = "192.0.2.1")
+        val second = server(host = "second").copy(ip = "192.0.2.2")
+        val candidate = ServerRanker.nextFailoverCandidate(
+            listOf(first, second),
+            currentServerIp = first.ip,
+            attemptedServerIps = setOf(second.ip)
+        )
+        assertNull(candidate)
+    }
+
     private fun server(
         host: String,
         ping: Long = 10,
