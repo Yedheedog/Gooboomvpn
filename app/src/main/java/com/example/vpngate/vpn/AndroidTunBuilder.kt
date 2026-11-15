@@ -167,10 +167,11 @@ internal class AndroidTunBuilder(
         require(addressFamily == OsConstants.AF_INET || addressFamily == OsConstants.AF_INET6) {
             "Unsupported address family: $addressFamily"
         }
-        // OpenVPN documents that this setting is ignored for families already
-        // configured with an address. For an unused family, allowFamily() would
-        // route traffic outside the VPN; the native client is configured to block
-        // unused families, and any unexpected request to allow one is rejected.
+        // Android enables configured families implicitly and cannot later block them.
+        // Reject either contradictory request rather than silently weakening OpenVPN policy.
+        if (!allow && addressFamily in configuredFamilies) {
+            error("Cannot block an address family already configured on the VPN interface.")
+        }
         if (allow && addressFamily !in configuredFamilies) {
             error("Refusing to allow an unused address family outside the VPN tunnel.")
         }
