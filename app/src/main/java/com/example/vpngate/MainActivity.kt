@@ -16,7 +16,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -129,8 +128,6 @@ private fun VpnGateApp(activity: ComponentActivity) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
-                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("VPN GATE", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                     Text("OPENVPN RELAY CLIENT", style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
@@ -148,13 +145,6 @@ private fun VpnGateApp(activity: ComponentActivity) {
                     )
                     Spacer(Modifier.height(6.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(58.dp).background(Color(0xFF20364A), RoundedCornerShape(50)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(34.dp))
-                        }
-                        Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(vpnState.serverLabel ?: selected?.country ?: "Automatic server", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(selected?.let { "${it.pingMs} ms  •  ${it.displaySpeed}" } ?: "Fastest available relay", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
