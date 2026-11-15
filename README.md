@@ -1,47 +1,76 @@
-# VPN Gate Connect
+# BUST THE GATE
 
-Android-only VPN Gate client using public volunteer VPN Gate relays and OpenVPN profiles.
+**Ads-free Android OpenVPN connector for public VPN Gate volunteer relays.**
 
-## Project status
+BUST THE GATE is an Android VPN client that discovers public VPN Gate-compatible relay profiles and connects through the embedded OpenVPN 3 core.
 
-The pinned OpenVPN 3 core is now compiled and linked into the Android JNI library for `arm64-v8a` and `x86_64`. The repository includes a real `ClientAPI::OpenVPNClient` subclass, JNI callbacks, an Android `VpnService.Builder` bridge, protected transport sockets, detached TUN descriptor handoff, and a serialized connect/stop lifecycle. OpenVPN core owns packet I/O through the handed-off TUN descriptor.
+## Current release
 
-CI runs relay-discovery unit tests and compiles Kotlin plus the native library for both configured ABIs without packaging APKs. This is source/build verification only: the app has **not yet been verified on a physical Android device**, so a successful compile must not be treated as proof of a working VPN tunnel. Real relay handshake, traffic, DNS, IPv4/IPv6 leak, disconnect, and revoke testing are still required.
+The first public release is being prepared as **v1.0.0**. Once published, the official APKs and SHA-256 checksums will be available on the [GitHub Releases page](https://github.com/Yedheedog/Gooboomvpn/releases).
 
-## Planned architecture
+- Android package: `com.example.vpngate`
+- Minimum Android version: Android 8.0 (API 26)
+- Target SDK: Android 15 (API 35)
+- Supported ABIs: `arm64-v8a` and `x86_64`
+- Release APK is signed with the project's configured PKCS12 release key.
+- Debug and release APKs are built and published separately.
 
-- Kotlin Android app and VPN Gate relay discovery
-- Fastest-server ranking based on relay metadata
-- Android `VpnService` lifecycle and foreground notification
-- OpenVPN 3 core via JNI
-- Android TUN builder and protected transport sockets
-- Explicit connection-state reporting and reliable disconnect cleanup
+## Features
 
-## Feature implementation status
+- VPN Gate relay discovery and refresh.
+- Add, enable, disable, and remove HTTPS VPN Gate-compatible CSV sources. Arbitrary provider formats are not supported.
+- Import individual `.ovpn` profiles; imported profile data is encrypted at rest with an Android Keystore AES-GCM key.
+- Combine enabled sources, deduplicate relays, and show source labels.
+- Country filtering for the relay list, automatic selection, and failover candidates.
+- Manual relay selection and sorting by lowest ping, highest published speed, or balanced metadata.
+- Latency-first automatic relay selection.
+- Automatic failover attempts for eligible connection failures (up to three alternate relays).
+- Connection recovery when the selected underlying physical network changes.
+- Connected-session timer and upload/download byte totals from OpenVPN TUN statistics.
 
-The feature branch `feature/readme-all-features` now contains the following coordinated implementation:
+### Known limitations
 
-- [x] **Add VPN Source button:** the plus (+) icon is immediately to the left of Refresh.
-- [x] **Add provider/server-list URL:** users can add, enable, disable, and remove HTTPS VPN Gate-compatible CSV sources. Arbitrary provider formats are not yet supported.
-- [x] **Import OpenVPN profile:** individual `.ovpn` profiles can be imported and managed. Profile data is encrypted at rest with an Android Keystore AES-GCM key.
-- [x] **Multi-source server discovery:** enabled compatible CSV sources are combined with the built-in VPN Gate list, deduplicated, and labeled by source. Imported profiles appear as individual entries.
-- [x] **Automatic failover:** unexpected fatal or terminal relay events trigger up to three alternate relay attempts, excluding already-tried relays. Recovery keeps the service foreground and respects the active country filter.
-- [x] **Country filtering:** country restrictions apply to the displayed list, automatic selection, and failover candidates.
-- [x] **Available-list sorting:** Lowest ping, Highest speed, and Balanced sorting are separate from the default latency-first automatic selection.
-- [ ] **Improved server ranking:** live measured latency/throughput probes are not yet connected; current ranking uses published relay metadata.
-- [x] **Connection recovery:** the service monitors validated non-VPN networks, updates the VPN's underlying-network association, and restarts the current relay when the selected underlying network changes.
+- Live measured latency/throughput probes are not yet used for ranking; displayed sorting uses published relay metadata.
+- Automatic failover and Wi-Fi/mobile network recovery have not been exhaustively validated across Android devices and OEM versions.
+- The app has been confirmed to establish a real VPN tunnel on a physical Android device. That device confirmation does not imply every relay, network transition, DNS configuration, or traffic-leak scenario has been independently tested.
+- Public VPN Gate relays are volunteer-operated and may be slow, unavailable, or untrusted.
 
-These are source-level implementations on the feature branch, not a release claim. Android CI compilation/tests and physical-device testing are still required, especially for real failover, Wi-Fi/mobile transitions, and traffic-leak behavior.
+## Download and install
 
-**UI placement note:** the Add VPN Source (+) icon belongs directly to the left of the refresh icon. Preserve the existing refresh action.
+1. Open [GitHub Releases](https://github.com/Yedheedog/Gooboomvpn/releases).
+2. Download the `-release.apk` asset for the version you want.
+3. Verify its SHA-256 hash against `SHA256SUMS.txt` if desired.
+4. Install the APK on Android. You may need to allow your browser or file manager to install apps from that source.
+5. Review Android's VPN permission prompt and approve it to connect.
 
-## Build requirements
+The debug APK is intended for development/testing. Most users should install the release APK.
 
-Android Studio, Android SDK, Android NDK, CMake, and a compatible JDK are required. CI currently compiles Kotlin and native libraries; APK packaging is reserved for meaningful device-testing milestones.
+## Build from source
+
+Requirements include Android SDK platform 35, Android NDK 27.2.12479018, CMake 3.22.1, JDK 17, and Gradle 8.9.
+
+Fetch the pinned OpenVPN 3 source and build native dependencies:
+
+```sh
+bash scripts/fetch-openvpn3.sh
+bash scripts/install-android-native-deps.sh
+gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
+```
+
+Release signing is enabled when all four environment variables are configured:
+
+- `RELEASE_KEYSTORE_PATH`
+- `RELEASE_KEYSTORE_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+- `RELEASE_KEY_PASSWORD`
+
+Never commit the release keystore or its passwords to the repository. Keep secure offline backups of the signing key.
 
 ## Safety and privacy
 
-VPN Gate relays are operated by volunteers, not by this app's developer. Relay operators may be able to observe traffic metadata and unencrypted traffic. Do not treat public relays as trusted for sensitive activity. The app must not claim a tunnel is active until the OpenVPN core reports a successful connection and the TUN interface is established.
+VPN Gate relays are operated by volunteers, not by the app developer. Relay operators may be able to observe traffic metadata and unencrypted traffic. Do not treat public relays as trusted for sensitive activity. Use HTTPS and other end-to-end encryption, and avoid transmitting sensitive information through untrusted relays.
+
+The app must not claim a tunnel is active until OpenVPN reports a successful connection and the Android TUN interface is established.
 
 ## OpenVPN 3 integration
 
@@ -51,16 +80,8 @@ The upstream OpenVPN 3 source revision is pinned in `OPENVPN3_REVISION`. Fetch i
 bash scripts/fetch-openvpn3.sh
 ```
 
-The script stages upstream source under `app/src/main/cpp/third_party/openvpn3` and verifies the exact commit.
+The Android native integration uses JNI and builds for `arm64-v8a` and `x86_64`.
 
-## Android TUN adapter
+## Project status
 
-The Android-side `AndroidTunBuilder` helper wraps `VpnService.Builder` operations for session name, MTU, interface addresses, included and excluded routes, DNS servers and search domains, and address-family allow/block settings. Allowing an address family is opt-in because Android's `allowFamily()` permits that traffic to bypass the VPN. Route exclusions intentionally fail closed below Android 13 because the platform cannot represent them safely through the same API.
-
-## Validation milestone
-
-Before release, build and test on a physical Android device. Verify real relay connection, public-IP changes, DNS routing, IPv4/IPv6 behavior, reconnect, revoke/disconnect cleanup, network changes, and absence of traffic leaks. Do not treat CI compilation alone as proof of a functioning VPN.
-
-## Android native dependency build
-
-Install per-ABI native dependencies with `bash scripts/install-android-native-deps.sh`; see [NATIVE_DEPENDENCIES.md](NATIVE_DEPENDENCIES.md) for the pinned vcpkg baseline and ABI mapping. CI performs Kotlin and native-library compilation and does not routinely package APKs.
+The core VPN connection has been confirmed working on a physical Android device. CI unit tests and native/Kotlin compilation provide build verification, but they do not replace device-level testing of relay connectivity, DNS routing, IPv4/IPv6 leak behavior, disconnect/revoke cleanup, failover, or Wi-Fi/mobile recovery.
