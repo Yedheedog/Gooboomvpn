@@ -151,6 +151,12 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     }
 
     void event(const openvpn::ClientAPI::Event &event) override {
+        if (event.name == "AUTH_FAILED") {
+            emit_auth_diagnostic(
+                "Relay returned AUTH_FAILED after the TLS/control-channel setup. "
+                "This is a server authentication rejection; it does not by itself identify whether "
+                "the relay rejected credentials or another server-side policy.");
+        }
         emit_event(event.name, event.info, event.error, event.fatal);
     }
     void acc_event(const openvpn::ClientAPI::AppCustomControlMessageEvent &) override {}
@@ -183,6 +189,13 @@ class AndroidOpenVPNClient final : public openvpn::ClientAPI::OpenVPNClient {
     void emit_status(const openvpn::ClientAPI::Status &status) {
         if (status.error) emit_event("CONNECT_RETURN", status.message, true, true);
         else emit_event("CONNECT_RETURN", status.message, false, false);
+    }
+
+    // Authentication diagnostics intentionally report only profile metadata and
+    // credential-handling decisions. Never log usernames, passwords, tokens,
+    // profile contents, certificates, or private keys.
+    void emit_auth_diagnostic(const std::string &message) {
+        emit_log("[AUTH] " + message);
     }
 
     void external_pki_cert_request(openvpn::ClientAPI::ExternalPKICertRequest &request) override {
@@ -656,6 +669,19 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
             return make_java_string(env, evaluated.message.empty()
                 ? "OpenVPN rejected the selected profile." : evaluated.message);
         }
+
+        client->emit_auth_diagnostic(
+            std::string("Profile evaluation: auth_mode=") +
+            (evaluated.autologin ? "autologin" : "username_password") +
+            ", locked_username=" +
+            (evaluated.userlockedUsername.empty() ? "absent" : "present") +
+            ", static_challenge=" +
+            (evaluated.staticChallenge.empty() ? "absent" : "present") +
+            ", private_key_password_required=" +
+            (evaluated.privateKeyPasswordRequired ? "yes" : "no") +
+            ", remote_proto=" + (evaluated.remoteProto.empty() ? "unspecified" : evaluated.remoteProto) +
+            ", remote_port=" + (evaluated.remotePort.empty() ? "unspecified" : evaluated.remotePort));
+
         if (evaluated.externalPki || evaluated.privateKeyPasswordRequired ||
             !evaluated.staticChallenge.empty()) {
             return make_java_string(env,
@@ -666,18 +692,30 @@ Java_com_example_vpngate_vpn_OpenVpn3Native_nativeStart(
         // "vpn" / "vpn" when a profile requests username/password authentication.
         if (!evaluated.autologin) {
             openvpn::ClientAPI::ProvideCreds credentials;
-            credentials.username = evaluated.userlockedUsername.empty()
-                ? "vpn" : evaluated.userlockedUsername;
+            const bool has_profile_locked_username = !evaluated.userlockedUsername.empty();
+            credentials.username = has_profile_locked_username
+                ? evaluated.userlockedUsername : "vpn";
             credentials.password = "vpn";
             ScopedWipe<std::string> wipe_username(credentials.username);
             ScopedWipe<std::string> wipe_password(credentials.password);
+            client->emit_auth_diagnostic(
+                std::string("Submitting VPN Gate username/password before connect(); username_source=") +
+                (has_profile_locked_username ? "profile_locked" : "shared_vpn_gate_default") +
+                ", password_configured=yes.");
             const openvpn::ClientAPI::Status credential_status =
                 client->provide_creds(credentials);
             if (credential_status.error) {
+                client->emit_auth_diagnostic(
+                    "OpenVPN ClientAPI rejected the supplied credential object before connection.");
                 return make_java_string(env, credential_status.message.empty()
                     ? "OpenVPN rejected the VPN Gate relay credentials."
                     : credential_status.message);
             }
+            client->emit_auth_diagnostic(
+                "OpenVPN ClientAPI accepted the credential object; this does not confirm relay-side authentication.");
+        } else {
+            client->emit_auth_diagnostic(
+                "Profile is autologin; no username/password credentials were supplied.");
         }
     
         // Hold the lifecycle lock across stale-worker joining and new-worker startup.
