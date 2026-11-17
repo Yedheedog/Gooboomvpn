@@ -1,4 +1,4 @@
-name: Android source checks
+name: Android source checks and diagnostic APKs
 
 on:
   push:
@@ -47,5 +47,56 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Run unit tests and compile Kotlin/native library (no APK packaging)
-        run: gradle --no-daemon :app:testDebugUnitTest :app:compileDebugKotlin :app:externalNativeBuildDebug
+      - name: Create temporary diagnostic signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/bust-the-gate-diagnostic.p12"
+          keytool -genkeypair -noprompt \
+            -alias diagnostic \
+            -keyalg RSA -keysize 2048 -validity 2 \
+            -storetype PKCS12 \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass diagnostic-only -keypass diagnostic-only \
+            -dname "CN=BUST THE GATE Diagnostic Build"
+          echo "RELEASE_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "RELEASE_KEYSTORE_PASSWORD=diagnostic-only" >> "$GITHUB_ENV"
+          echo "RELEASE_KEY_ALIAS=diagnostic" >> "$GITHUB_ENV"
+          echo "RELEASE_KEY_PASSWORD=diagnostic-only" >> "$GITHUB_ENV"
+      - name: Run tests and package both diagnostic APK variants
+        run: |
+          set -euo pipefail
+          gradle --no-daemon \
+            :app:testDebugUnitTest \
+            :app:assembleDebug \
+            :app:assembleRelease
+      - name: Verify diagnostic APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEBUG_APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          RELEASE_APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -s "$DEBUG_APK"
+          test -s "$RELEASE_APK"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$AAPT" dump badging "$DEBUG_APK" | grep -F "package: name='com.example.vpngate.diagnostic.debug'"
+          "$AAPT" dump badging "$RELEASE_APK" | grep -F "package: name='com.example.vpngate.diagnostic.release'"
+          for apk in "$DEBUG_APK" "$RELEASE_APK"; do
+            for abi in arm64-v8a x86_64; do
+              unzip -Z1 "$apk" | grep -Fx "lib/$abi/libopenvpn3_jni.so" >/dev/null
+            done
+            "$APKSIGNER" verify --verbose "$apk"
+          done
+          mkdir -p diagnostic-apks
+          cp "$DEBUG_APK" diagnostic-apks/BUST-THE-GATE-auth-diagnostics-debug.apk
+          cp "$RELEASE_APK" diagnostic-apks/BUST-THE-GATE-auth-diagnostics-release.apk
+          sha256sum diagnostic-apks/*.apk > diagnostic-apks/SHA256SUMS.txt
+          cat diagnostic-apks/SHA256SUMS.txt
+      - name: Upload diagnostic APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: bust-the-gate-auth-diagnostics
+          path: diagnostic-apks/*
+          if-no-files-found: error
+          retention-days: 7
