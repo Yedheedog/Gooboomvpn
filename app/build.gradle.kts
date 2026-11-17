@@ -40,7 +40,11 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".diagnostic.debug"
+        }
         getByName("release") {
+            applicationIdSuffix = ".diagnostic.release"
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
